@@ -217,7 +217,6 @@ with st.sidebar:
             "💼 Roles",
             "📈 Time Trends",
             "🗂️ Browse Jobs",
-            "🗃️ Database Viewer",
         ],
         label_visibility="collapsed",
     )
@@ -638,92 +637,6 @@ elif page == "🗂️ Browse Jobs":
     else:
         _empty_chart("Jobs")
 
-# ---- Database Viewer ---------------------------------------------------------
-elif page == "🗃️ Database Viewer":
-    st.markdown("# 🗃️ Database Catalog & Inspector")
-    st.markdown("Live metadata catalog, table schemas, and database query explorer.")
-    st.divider()
-
-    # Fetch table summary from the FastAPI backend
-    try:
-        r = requests.get(f"{BASE}/api/v1/database/tables", timeout=15)
-        r.raise_for_status()
-        tables_meta = r.json()
-    except Exception as exc:
-        st.error(f"❌ Failed to fetch database schema metadata: {exc}")
-        st.stop()
-
-    if not tables_meta:
-        st.info("No tables found in the database.")
-    else:
-        # Table selection list
-        table_options = list(tables_meta.keys())
-        # Format names for dropdown to show count
-        dropdown_options = {
-            t: f"{t} ({tables_meta[t]['row_count']:,} rows)" for t in table_options
-        }
-        
-        selected_table = st.selectbox(
-            "Select Database Table to Inspect",
-            options=table_options,
-            format_func=lambda x: dropdown_options[x]
-        )
-        
-        meta = tables_meta[selected_table]
-        
-        # Display table summary KPIs
-        col_m1, col_m2 = st.columns(2)
-        _kpi(col_m1, f"{meta['row_count']:,}", f"Total Rows in '{selected_table}'")
-        _kpi(col_m2, f"{len(meta['columns'])}", f"Number of Columns")
-            
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Schema details in an expander
-        with st.expander("📋 Table Column Definitions", expanded=False):
-            schema_df = pd.DataFrame(meta['columns'])
-            schema_df.columns = ["Column Name", "Data Type"]
-            st.dataframe(schema_df, use_container_width=True, hide_index=True)
-            
-        st.divider()
-        st.markdown(f"### 🔍 Table Preview: `{selected_table}`")
-        
-        # Pagination controls
-        total_rows = meta['row_count']
-        if total_rows > 0:
-            page_size = st.slider("Rows per page", min_value=10, max_value=100, value=50, step=10)
-            max_pages = max(1, (total_rows + page_size - 1) // page_size)
-            page_num = st.number_input("Page", min_value=1, max_value=max_pages, value=1, step=1)
-            
-            # Fetch table data
-            try:
-                data_r = requests.get(
-                    f"{BASE}/api/v1/database/table/{selected_table}",
-                    params={"page": page_num, "page_size": page_size},
-                    timeout=15
-                )
-                data_r.raise_for_status()
-                table_data = data_r.json()
-                df = pd.DataFrame(table_data["rows"])
-            except Exception as exc:
-                st.error(f"❌ Failed to load table data: {exc}")
-                df = pd.DataFrame()
-                
-            if not df.empty:
-                st.caption(f"Showing page {page_num} of {max_pages} ({len(df)} records)")
-                
-                # Dynamic column configs to automatically style link and datetime columns
-                column_configs = {}
-                for col in df.columns:
-                    if col in ["url", "company_logo"]:
-                        column_configs[col] = st.column_config.LinkColumn(col, help=f"Click {col} link")
-                    elif "date" in col or "month" in col or "at" in col:
-                        column_configs[col] = st.column_config.DatetimeColumn(col)
-                
-                st.dataframe(df, column_config=column_configs, use_container_width=True, hide_index=True)
-            else:
-                st.info("No records to display on this page.")
-        else:
-            st.info("This table is empty.")
 
 # ---------------------------------------------------------------------------
 # Auto-refresh — sleeps 60s then clears cache and reruns
