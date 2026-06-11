@@ -1,0 +1,111 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# CareerLens Docker Compose
+# Services: postgres | pipeline (one-shot) | scheduler | api | dashboard
+# ---------------------------------------------------------------------------
+
+x-common-env: &common-env
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  POSTGRES_DB: ${POSTGRES_DB:-careerlens}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  PIPELINE_INTERVAL_MINUTES: ${PIPELINE_INTERVAL_MINUTES:-5}
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+
+x-app-base: &app-base
+  build: .
+  env_file:
+    - .env
+  environment:
+    <<: *common-env
+  depends_on:
+    postgres:
+      condition: service_healthy
+  restart: on-failure
+
+services:
+
+  # ── Postgres ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-careerlens}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-careerlens}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── One-shot pipeline run (ingestion + transform + backfill) ───────────────
+  pipeline:
+    <<: *app-base
+    environment:
+      <<: *common-env
+      API_BASE_URL: http://api:8000
+    command: >
+      python -m src.orchestration.runner --source remotive
+    volumes:
+      - ./data:/app/data:ro   # Kaggle fallback CSV (read-only)
+
+  # ── Recurring scheduled pipeline (near-real-time, default every 5 min) ──────
+  # NOTE: This is intentionally a short-interval batch pipeline, not streaming.
+  # Job postings change on the order of hours; 5-min cycles keep the dashboard
+  # visibly fresh during demos. Set PIPELINE_INTERVAL_MINUTES in .env to adjust.
+  scheduler:
+    <<: *app-base
+    environment:
+      <<: *common-env
+      API_BASE_URL: http://api:8000
+    command: >
+      python -m src.orchestration.runner --source all --schedule-interval ${PIPELINE_INTERVAL_MINUTES:-5}
+    volumes:
+      - ./data:/app/data:ro
+    profiles:
+      - scheduled   # Only starts with: docker compose --profile scheduled up
+
+  # ── FastAPI REST API ───────────────────────────────────────────────────────
+  api:
+    <<: *app-base
+    command: >
+      uvicorn src.serving.api.main:app --host 0.0.0.0 --port 8000 --workers 2
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── Streamlit Dashboard ────────────────────────────────────────────────────
+  dashboard:
+    <<: *app-base
+    environment:
+      <<: *common-env
+      API_BASE_URL: http://api:8000
+    command: >
+      streamlit run src/serving/dashboard/app.py
+      --server.address 0.0.0.0
+      --server.port 8501
+      --server.headless true
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

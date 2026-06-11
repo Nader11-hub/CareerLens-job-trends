@@ -1,0 +1,54 @@
+%%{init: {"theme": "dark"}}%%
+
+flowchart LR
+    subgraph IN["Ingestion"]
+        direction TB
+        src(["Remotive API\n/ Kaggle CSV"])
+        validate["Pydantic\nValidation"]
+        src --> validate
+    end
+
+    subgraph BR["🥉 Bronze"]
+        direction TB
+        bj[("bronze_jobs\n✅ Valid")]
+        dl[("dead_letter\n❌ Invalid")]
+    end
+
+    subgraph BF["Dead-Letter Backfill"]
+        direction TB
+        sanitise["Sanitise\n(URL repair etc.)"]
+        retry_val["Re-validate\nPydantic"]
+        sanitise --> retry_val
+    end
+
+    subgraph SI["🥈 Silver"]
+        sj[("silver_jobs\nNormalised")]
+    end
+
+    subgraph GO["🥇 Gold"]
+        direction TB
+        gct[("country\ntrends")]
+        gst[("skill\ntrends")]
+        grt[("role\ntrends")]
+        gtt[("time\ntrends")]
+    end
+
+    subgraph SRV["🚀 Serving"]
+        direction TB
+        api["FastAPI\nREST API"]
+        dash["Streamlit\nDashboard"]
+        api --> dash
+    end
+
+    validate -->|"valid"| bj
+    validate -->|"invalid"| dl
+    dl -->|"unresolved"| sanitise
+    retry_val -->|"✅ fixed"| bj
+    retry_val -->|"❌ still invalid\nincrement retry_count"| dl
+
+    bj -->|"Python runner\nor dbt"| sj
+    sj --> gct
+    sj -->|"tag explode"| gst
+    sj --> grt
+    sj --> gtt
+    gct & gst & grt & gtt --> api

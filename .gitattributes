@@ -1,0 +1,11 @@
+# Normalize line endings to LF in the repository for all text files
+* text=auto eol=lf
+
+# Force binary for specific types
+*.db binary
+*.sqlite binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.zip binary

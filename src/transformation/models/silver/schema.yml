@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: silver_jobs
+    description: >
+      Normalized job postings derived from the bronze layer.
+      Each row represents one unique job posting enriched with inferred country,
+      normalized role title, and month-grain date fields.
+
+    columns:
+      - name: job_id
+        description: "Source job identifier (matches bronze_jobs.id)."
+        tests:
+          - not_null
+          - unique
+
+      - name: source
+        description: "Originating source system."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["remotive", "kaggle", "remoteok", "arbeitnow"]
+
+      - name: title
+        description: "Original job title."
+        tests:
+          - not_null
+
+      - name: company_name
+        description: "Employer name."
+        tests:
+          - not_null
+
+      - name: role
+        description: "Normalized role label derived from the job title."
+        tests:
+          - not_null
+
+      - name: country
+        description: "Inferred country or region extracted from candidate_required_location."
+        tests:
+          - not_null
+
+      - name: publication_date
+        description: "Original publication timestamp (timezone-aware)."
+        tests:
+          - not_null
+
+      - name: published_date
+        description: "Publication date truncated to day grain."
+        tests:
+          - not_null
+
+      - name: published_month
+        description: "Publication date truncated to month grain (first day of month)."
+        tests:
+          - not_null

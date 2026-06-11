@@ -1,0 +1,44 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local databases and generated data
+*.sqlite
+*.db
+local_postgres_data/
+logs/
+*.log
+
+# dbt artifacts
+target/
+dbt_packages/
+dbt_modules/
+
+# Streamlit and editor files
+.streamlit/
+.vscode/
+.idea/
+
+# Test temp directories
+.test_tmp/
+
+# Large fallback CSV datasets (use Git LFS or regenerate locally)
+data/fallback/*.csv

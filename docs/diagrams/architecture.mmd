@@ -1,0 +1,75 @@
+%%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#1c2128", "edgeLabelBackground": "#161b22", "tertiaryColor": "#0d1117"}}}%%
+
+flowchart TD
+    subgraph Sources["🌐 External Sources"]
+        A1["Remotive API\nremotive.com/api/remote-jobs"]
+        A2["Kaggle CSV Fallback\ndata/fallback/kaggle_fallback.csv"]
+    end
+
+    subgraph Ingestion["⚙️ Ingestion Layer  src/ingestion/"]
+        B1["fetcher.py\nHTTP GET + retry (tenacity)"]
+        B2["models.py\nPydantic JobRecord validation"]
+        B3["pipeline.py\nOrchestrate fetch → validate → persist"]
+        B4["backfill.py\nDead-letter retry + sanitise"]
+    end
+
+    subgraph Bronze["🥉 Bronze Layer  Postgres / SQLite"]
+        C1[("bronze_jobs\nValidated raw records")]
+        C2[("bronze_jobs_dead_letter\nInvalid records + retry metadata")]
+    end
+
+    subgraph Transformation["🔄 Transformation Layer  src/transformation/"]
+        D1["Python Runner\nrunner.py — works with SQLite"]
+        D2["dbt Models\nsilver_jobs.sql  gold_*.sql  schema.yml"]
+    end
+
+    subgraph Silver["🥈 Silver Layer"]
+        E1[("silver_jobs\nNormalised + enriched")]
+    end
+
+    subgraph Gold["🥇 Gold Layer"]
+        F1[("gold_country_trends")]
+        F2[("gold_skill_trends")]
+        F3[("gold_role_trends")]
+        F4[("gold_time_trends")]
+    end
+
+    subgraph Serving["🚀 Serving Layer  src/serving/"]
+        G1["FastAPI\nmain.py\nhealth · stats · trends · jobs"]
+        G2["Streamlit Dashboard\napp.py\nChoropleth · Treemap · KPIs"]
+    end
+
+    subgraph Orchestration["📅 Orchestration  src/orchestration/"]
+        H1["runner.py\nSingle-run CLI"]
+        H2["scheduler.py\nAPScheduler recurring runs"]
+    end
+
+    A1 -->|"Live JSON"| B1
+    A2 -->|"CSV rows"| B1
+    B1 -->|"raw dicts"| B2
+    B2 -->|"valid + invalid"| B3
+    B3 -->|"upsert"| C1
+    B3 -->|"insert"| C2
+    C2 -->|"retry"| B4
+    B4 -->|"promote"| C1
+
+    C1 --> D1
+    C1 --> D2
+    D1 --> E1
+    D2 --> E1
+
+    E1 --> F1
+    E1 --> F2
+    E1 --> F3
+    E1 --> F4
+
+    F1 --> G1
+    F2 --> G1
+    F3 --> G1
+    F4 --> G1
+    G1 -->|"REST JSON"| G2
+
+    H1 --> B3
+    H1 --> D1
+    H1 --> B4
+    H2 -->|"triggers"| H1

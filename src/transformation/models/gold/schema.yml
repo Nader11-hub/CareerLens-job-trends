@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: gold_country_trends
+    description: >
+      Aggregated monthly job counts by inferred country.
+      Each row is a unique (country, published_month) combination.
+
+    columns:
+      - name: country
+        description: "Country or region name."
+        tests:
+          - not_null
+
+      - name: published_month
+        description: "First day of the month the jobs were published."
+        tests:
+          - not_null
+
+      - name: job_count
+        description: "Number of job postings for this country in this month."
+        tests:
+          - not_null
+
+  - name: gold_skill_trends
+    description: >
+      Aggregated monthly job counts by skill tag.
+      Skills are expanded from the tags array; each tag produces a separate row.
+
+    columns:
+      - name: skill
+        description: "Lowercase skill tag."
+        tests:
+          - not_null
+
+      - name: published_month
+        description: "First day of the month."
+        tests:
+          - not_null
+
+      - name: job_count
+        description: "Number of job postings mentioning this skill in this month."
+        tests:
+          - not_null
+
+  - name: gold_role_trends
+    description: >
+      Aggregated monthly job counts by normalized role title.
+
+    columns:
+      - name: role
+        description: "Normalized role title."
+        tests:
+          - not_null
+
+      - name: published_month
+        description: "First day of the month."
+        tests:
+          - not_null
+
+      - name: job_count
+        description: "Number of job postings for this role in this month."
+        tests:
+          - not_null
+
+  - name: gold_time_trends
+    description: >
+      Aggregated total monthly job counts across all sources.
+
+    columns:
+      - name: published_month
+        description: "First day of the month."
+        tests:
+          - not_null
+          - unique
+
+      - name: job_count
+        description: "Total job postings published in this month."
+        tests:
+          - not_null

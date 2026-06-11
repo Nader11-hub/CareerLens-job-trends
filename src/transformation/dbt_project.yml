@@ -1,0 +1,27 @@
+name: "careerlens"
+version: "1.0.0"
+config-version: 2
+
+profile: "careerlens"
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+docs-paths: ["docs"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  careerlens:
+    silver:
+      +materialized: table
+      +schema: public
+      +docs:
+        show: true
+    gold:
+      +materialized: table
+      +schema: public
+      +docs:
+        show: true

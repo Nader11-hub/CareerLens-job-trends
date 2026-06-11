@@ -1,0 +1,41 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: "Raw validated job postings from the ingestion layer."
+    schema: public
+    tables:
+      - name: bronze_jobs
+        description: "Validated job records stored immediately after ingestion."
+        columns:
+          - name: id
+            description: "Source job identifier from Remotive or Kaggle."
+            tests:
+              - not_null
+              - unique
+          - name: source
+            description: "Ingestion source system name."
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ["remotive", "kaggle", "remoteok", "arbeitnow"]
+          - name: url
+            description: "Canonical job posting URL."
+            tests:
+              - not_null
+          - name: title
+            description: "Job title as provided by the source."
+            tests:
+              - not_null
+          - name: company_name
+            description: "Employer name."
+            tests:
+              - not_null
+          - name: publication_date
+            description: "Timestamp when the job was published."
+            tests:
+              - not_null
+          - name: ingested_at
+            description: "Timestamp when the record was written to the bronze layer."
+            tests:
+              - not_null
