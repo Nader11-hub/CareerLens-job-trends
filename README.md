@@ -92,7 +92,7 @@ Set `PIPELINE_INTERVAL_MINUTES` in your `.env` file (or as a Docker environment 
 PIPELINE_INTERVAL_MINUTES=5
 
 # .env — production (reduce API load)
-PIPELINE_INTERVAL_Second=60
+PIPELINE_INTERVAL_MINUTES=60
 ```
 
 The `--schedule-interval` CLI flag on `src.orchestration.runner` overrides this value for one-off runs.
