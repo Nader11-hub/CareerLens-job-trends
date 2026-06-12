@@ -13,6 +13,7 @@ from src.ingestion.db import (
     GoldRoleTrend,
     GoldSkillTrend,
     GoldTimeTrend,
+    SilverJob,
 )
 
 
@@ -129,23 +130,31 @@ def fetch_jobs_page(
     page: int = 1,
     page_size: int = 50,
     source: str | None = None,
-) -> list[BronzeJob]:
-    """Return a paginated page of bronze jobs.
+    seniority: str | None = None,
+    min_salary: float | None = None,
+) -> list[tuple[BronzeJob, SilverJob]]:
+    """Return a paginated page of bronze jobs joined with silver jobs for enrichment and filtering.
 
     Args:
         session: Active SQLAlchemy session.
         page: 1-based page number.
         page_size: Rows per page (max 200).
         source: Optional source filter.
+        seniority: Optional seniority level filter.
+        min_salary: Optional minimum salary threshold.
 
     Returns:
-        List of :class:`BronzeJob` ORM instances for the requested page.
+        List of (BronzeJob, SilverJob) tuples for the requested page.
     """
     page_size = min(page_size, 200)
     offset = (max(page, 1) - 1) * page_size
-    q = session.query(BronzeJob)
+    q = session.query(BronzeJob, SilverJob).outerjoin(SilverJob, BronzeJob.id == SilverJob.job_id)
     if source:
         q = q.filter(BronzeJob.source == source)
+    if seniority:
+        q = q.filter(SilverJob.seniority.ilike(seniority))
+    if min_salary is not None:
+        q = q.filter(SilverJob.salary_max >= min_salary)
     return q.order_by(BronzeJob.publication_date.desc()).offset(offset).limit(page_size).all()
 
 

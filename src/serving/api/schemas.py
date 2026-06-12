@@ -60,6 +60,11 @@ class JobSummaryResponse(BaseModel):
     job_type: str | None = None
     publication_date: str
     url: str
+    salary_min: float | None = None
+    salary_max: float | None = None
+    salary_currency: str | None = None
+    seniority: str | None = None
+
 
 
 class StatsResponse(BaseModel):

@@ -30,5 +30,10 @@ select
     tags,
     publication_date,
     published_date,
-    published_month
+    published_month,
+    null::float as salary_min,
+    null::float as salary_max,
+    null::varchar(10) as salary_currency,
+    'Unspecified'::varchar(50) as seniority
 from bronze_jobs
+

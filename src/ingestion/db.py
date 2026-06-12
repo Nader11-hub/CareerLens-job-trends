@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Integer, String, Text, create_engine
+from sqlalchemy import JSON, Boolean, Date, DateTime, Integer, String, Text, Float, create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -73,6 +73,10 @@ class SilverJob(Base):
     publication_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     published_date: Mapped[date] = mapped_column(Date, nullable=False)
     published_month: Mapped[date] = mapped_column(Date, nullable=False)
+    salary_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    salary_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    salary_currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    seniority: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
 
 class GoldCountryTrend(Base):

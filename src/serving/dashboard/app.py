@@ -205,6 +205,8 @@ with st.sidebar:
 
     st.markdown("### 🔧 Filters")
     top_n = st.slider("Top N results", min_value=5, max_value=50, value=15, step=5)
+    seniority_filter = st.selectbox("Seniority Level", ["All", "Junior", "Mid-level", "Senior", "Lead"])
+    min_salary_filter = st.number_input("Min Salary (USD)", min_value=0, value=0, step=10000)
     st.divider()
 
     st.markdown("### 📑 Navigation")
@@ -216,6 +218,8 @@ with st.sidebar:
             "🛠️ Skills",
             "💼 Roles",
             "📈 Time Trends",
+            "💸 Salary Analysis",
+            "🧠 Resume Matcher",
             "🗂️ Browse Jobs",
         ],
         label_visibility="collapsed",
@@ -585,6 +589,175 @@ elif page == "📈 Time Trends":
         _kpi(c2, str(peak_row["published_month"]), "Peak Month")
         _kpi(c3, f"{int(peak_row['job_count']):,}", "Peak Month Jobs")
 
+# ---- Salary Analysis ---------------------------------------------------------
+elif page == "💸 Salary Analysis":
+    st.markdown("# 💸 Salary Analysis")
+    st.markdown("Salary insights extracted from job postings across all sources.")
+    st.divider()
+
+    # Fetch 200 jobs to analyze salaries
+    jobs_df = _safe_fetch("/api/v1/jobs", {"page_size": 200})
+
+    if not jobs_df.empty and "salary_min" in jobs_df.columns:
+        # Filter for jobs with valid salary data
+        salary_df = jobs_df.dropna(subset=["salary_min", "salary_max"]).copy()
+        
+        # Calculate average salary for each job
+        if not salary_df.empty:
+            salary_df["avg_salary"] = (salary_df["salary_min"] + salary_df["salary_max"]) / 2
+            
+            # Convert non-USD if we want, but since most are USD or we can just group by currency
+            currencies = [c for c in salary_df["salary_currency"].unique() if c]
+            selected_currency = st.selectbox("Select Currency", options=currencies if len(currencies) > 0 else ["USD"])
+            
+            curr_df = salary_df[salary_df["salary_currency"] == selected_currency]
+            
+            if not curr_df.empty:
+                # KPI Metrics
+                c1, c2, c3 = st.columns(3)
+                avg_sal = curr_df["avg_salary"].mean()
+                max_sal = curr_df["salary_max"].max()
+                pct_sal = (len(salary_df) / len(jobs_df)) * 100
+                
+                _kpi(c1, f"{selected_currency} {int(avg_sal):,}", "Average Salary")
+                _kpi(c2, f"{selected_currency} {int(max_sal):,}", "Maximum Salary")
+                _kpi(c3, f"{pct_sal:.1f}%", "Jobs with Salary Info")
+                
+                st.write("")
+                
+                # Chart 1: Salary Distribution Histogram
+                fig_dist = px.histogram(
+                    curr_df,
+                    x="avg_salary",
+                    nbins=15,
+                    title=f"Salary Distribution ({selected_currency})",
+                    labels={"avg_salary": "Average Salary"},
+                    color_discrete_sequence=[_ACCENT],
+                )
+                _apply_layout(fig_dist)
+                
+                # Chart 2: Average Salary by Seniority
+                seniority_grp = curr_df.groupby("seniority")["avg_salary"].mean().reset_index()
+                # Sort seniority logically
+                seniority_order = {"Junior": 0, "Mid-level": 1, "Senior": 2, "Lead": 3, "Unspecified": 4}
+                seniority_grp["sort_order"] = seniority_grp["seniority"].map(seniority_order).fillna(5)
+                seniority_grp = seniority_grp.sort_values("sort_order")
+                
+                fig_sen = px.bar(
+                    seniority_grp,
+                    x="seniority",
+                    y="avg_salary",
+                    title=f"Average Salary by Seniority ({selected_currency})",
+                    labels={"avg_salary": "Avg Salary", "seniority": "Seniority"},
+                    color="avg_salary",
+                    color_continuous_scale=px.colors.sequential.Blues,
+                )
+                _apply_layout(fig_sen)
+                
+                # Render charts side by side
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.plotly_chart(fig_dist, use_container_width=True)
+                with col2:
+                    st.plotly_chart(fig_sen, use_container_width=True)
+                    
+                st.divider()
+                
+                # Table: Top paying roles
+                st.subheader("🏆 Top Paying Postings")
+                top_paying = curr_df.sort_values(by="salary_max", ascending=False).head(10)
+                st.dataframe(
+                    top_paying[["title", "company_name", "seniority", "salary_min", "salary_max", "url"]],
+                    column_config={
+                        "url": st.column_config.LinkColumn("Job Link"),
+                        "salary_min": st.column_config.NumberColumn("Min Salary", format=f"{selected_currency} %.0f"),
+                        "salary_max": st.column_config.NumberColumn("Max Salary", format=f"{selected_currency} %.0f"),
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info(f"No salary records found for currency: {selected_currency}")
+        else:
+            st.info("No jobs in this batch have explicit salary ranges. Try running the live pipeline to fetch newer jobs.")
+    else:
+        st.info("No job data available. Run the pipeline to ingest jobs.")
+
+# ---- Resume Skill Matcher ----------------------------------------------------
+elif page == "🧠 Resume Matcher":
+    st.markdown("# 🧠 Resume Skill Matcher")
+    st.markdown("Paste your skills or resume description below to find matching remote jobs in our database.")
+    st.divider()
+
+    # User input for resume/skills
+    user_input = st.text_area(
+        "Enter your skills, tech stack, or paste your resume text:",
+        placeholder="e.g. Python, SQL, PostgreSQL, Docker, FastAPI, dbt, pandas, AWS, git",
+        height=150,
+    )
+
+    if user_input:
+        # Simple tokenization of user input
+        import re
+        user_skills = set(re.findall(r'\b[a-zA-Z0-9+#\-\.]+\b', user_input.lower()))
+        
+        # Filter out common stop words / short words unless they are valid tech keywords (like c, go, r)
+        stopwords = {"and", "the", "with", "for", "from", "using", "experience", "work", "skills", "development", "data", "software", "engineer", "developer", "role"}
+        cleaned_skills = {s for s in user_skills if s not in stopwords and (len(s) > 1 or s in ["c", "r", "go"])}
+        
+        if cleaned_skills:
+            st.write(f"🔍 Identified skills: " + ", ".join(f"`{s}`" for s in sorted(cleaned_skills)))
+            
+            # Fetch batch of jobs to match
+            jobs_df = _safe_fetch("/api/v1/jobs", {"page_size": 200})
+            
+            if not jobs_df.empty:
+                matches = []
+                for _, row in jobs_df.iterrows():
+                    # Extract job terms
+                    job_tags = set(row.get("tags") or [])
+                    # Add words from job title to improve matching
+                    title_words = set(re.findall(r'\b[a-zA-Z0-9+#\-\.]+\b', row["title"].lower()))
+                    job_terms = job_tags.union(title_words)
+                    
+                    # Intersect skills
+                    matched = cleaned_skills.intersection(job_terms)
+                    
+                    if matched:
+                        score = (len(matched) / len(cleaned_skills)) * 100
+                        matches.append({
+                            "title": row["title"],
+                            "company_name": row["company_name"],
+                            "country": row.get("country") or "Remote",
+                            "seniority": row.get("seniority") or "Mid-level",
+                            "matched_skills": list(matched),
+                            "match_score": round(score),
+                            "url": row["url"]
+                        })
+                
+                if matches:
+                    match_df = pd.DataFrame(matches).sort_values(by="match_score", ascending=False)
+                    st.success(f"🎉 Found **{len(match_df)}** matching jobs!")
+                    
+                    # Render matches
+                    st.dataframe(
+                        match_df[["match_score", "title", "company_name", "country", "seniority", "matched_skills", "url"]],
+                        column_config={
+                            "match_score": st.column_config.ProgressColumn("Match Score", min_value=0, max_value=100, format="%d%%"),
+                            "url": st.column_config.LinkColumn("Apply Link"),
+                        },
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.info("No matching jobs found. Try entering different or more specific technical skills (e.g., Python, SQL, AWS).")
+            else:
+                st.info("No jobs available to match against.")
+        else:
+            st.warning("Please enter some valid tech skills (e.g. 'Python, SQL').")
+    else:
+        st.info("💡 Paste your skills above, and we will scan our database of active jobs to show you matching postings.")
+
 # ---- Browse Jobs -------------------------------------------------------------
 elif page == "🗂️ Browse Jobs":
     st.markdown("# 🗂️ Browse Job Postings")
@@ -600,10 +773,14 @@ elif page == "🗂️ Browse Jobs":
         "🔍 Search title or company", placeholder="e.g. Data Engineer, Stripe"
     )
 
-    # Fetch jobs dynamically with the selected source filter
+    # Fetch jobs dynamically with the selected filters
     params = {"page_size": 200}
     if source_filter != "All":
         params["source"] = source_filter
+    if seniority_filter != "All":
+        params["seniority"] = seniority_filter
+    if min_salary_filter > 0:
+        params["min_salary"] = min_salary_filter
 
     display_df = _safe_fetch("/api/v1/jobs", params)
 
@@ -621,7 +798,10 @@ elif page == "🗂️ Browse Jobs":
                     "title",
                     "company_name",
                     "country",
-                    "category",
+                    "seniority",
+                    "salary_min",
+                    "salary_max",
+                    "salary_currency",
                     "source",
                     "publication_date",
                     "url",
@@ -630,6 +810,10 @@ elif page == "🗂️ Browse Jobs":
             column_config={
                 "url": st.column_config.LinkColumn("Job Link", help="Click to open the job posting"),
                 "publication_date": st.column_config.DatetimeColumn("Published At"),
+                "salary_min": st.column_config.NumberColumn("Min Salary", format="$%.0f"),
+                "salary_max": st.column_config.NumberColumn("Max Salary", format="$%.0f"),
+                "salary_currency": st.column_config.TextColumn("Currency"),
+                "seniority": st.column_config.TextColumn("Seniority"),
             },
             use_container_width=True,
             hide_index=True,

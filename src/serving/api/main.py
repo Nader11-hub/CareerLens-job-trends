@@ -175,23 +175,31 @@ def list_jobs(
     page: int = Query(default=1, ge=1, description="Page number (1-based)."),
     page_size: int = Query(default=50, ge=1, le=200, description="Rows per page."),
     source: str | None = Query(default=None, description="Filter by source (remotive/kaggle/remoteok/arbeitnow)."),
+    seniority: str | None = Query(default=None, description="Filter by seniority level."),
+    min_salary: float | None = Query(default=None, description="Minimum salary threshold."),
     session: Session = Depends(get_db),
 ) -> list[JobSummaryResponse]:
-    """Return a paginated list of bronze-layer job records."""
-    jobs = fetch_jobs_page(session, page=page, page_size=page_size, source=source)
-    if not jobs:
+    """Return a paginated list of bronze-layer job records joined with silver metrics."""
+    jobs_data = fetch_jobs_page(
+        session, page=page, page_size=page_size, source=source, seniority=seniority, min_salary=min_salary
+    )
+    if not jobs_data:
         raise HTTPException(status_code=404, detail="No jobs found for the given parameters.")
     return [
         JobSummaryResponse(
-            id=j.id,
-            title=j.title,
-            company_name=j.company_name,
-            source=j.source,
-            country=j.candidate_required_location,
-            category=j.category,
-            job_type=j.job_type,
-            publication_date=j.publication_date.isoformat(),
-            url=j.url,
+            id=bronze.id,
+            title=bronze.title,
+            company_name=bronze.company_name,
+            source=bronze.source,
+            country=bronze.candidate_required_location,
+            category=bronze.category,
+            job_type=bronze.job_type,
+            publication_date=bronze.publication_date.isoformat(),
+            url=bronze.url,
+            salary_min=silver.salary_min if silver else None,
+            salary_max=silver.salary_max if silver else None,
+            salary_currency=silver.salary_currency if silver else None,
+            seniority=silver.seniority if silver else None,
         )
-        for j in jobs
+        for bronze, silver in jobs_data
     ]
