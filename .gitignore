@@ -42,3 +42,4 @@ dbt_modules/
 
 # Large fallback CSV datasets (use Git LFS or regenerate locally)
 data/fallback/*.csv
+!data/fallback/kaggle_fallback.csv
