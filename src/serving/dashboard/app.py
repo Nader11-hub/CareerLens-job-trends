@@ -6,6 +6,14 @@ CareerLens FastAPI to visualise global job market trends.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Add project root to sys.path to allow importing 'src'
+root_path = Path(__file__).resolve().parents[3]
+if str(root_path) not in sys.path:
+    sys.path.insert(0, str(root_path))
+
 import time
 from datetime import datetime
 
@@ -195,6 +203,145 @@ def _safe_fetch(endpoint: str, params: dict | None = None) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def get_mock_email_html(name: str, skills: list[str], jobs_df: pd.DataFrame) -> str:
+    # Build list of jobs matching skills
+    import re
+    matched_jobs = []
+    if jobs_df.empty:
+        pass
+    elif not skills:
+        # Show some recent jobs as demo
+        matched_jobs = jobs_df.head(5).to_dict("records")
+    else:
+        sub_skills = {s.strip().lower() for s in skills if s.strip()}
+        for _, row in jobs_df.iterrows():
+            job_tags = {t.lower() for t in (row.get("tags") or [])}
+            title_words = set(re.findall(r"\b[a-zA-Z0-9+#\-\.]+\b", row["title"].lower()))
+            job_terms = job_tags.union(title_words)
+            if sub_skills.intersection(job_terms):
+                matched_jobs.append(row)
+                if len(matched_jobs) >= 5:
+                    break
+
+    # Compile HTML mockup
+    skills_list_str = ", ".join(f"<code>{s}</code>" for s in skills) if skills else "All remote fields"
+    
+    job_cards_html = ""
+    if not matched_jobs:
+        job_cards_html = "<p style='color: #8b949e; text-align: center; padding: 20px;'>No matching jobs found in current cache. Add more general skills (e.g. Python, SQL) to preview.</p>"
+    else:
+        for job in matched_jobs:
+            sal_min = job.get("salary_min")
+            sal_max = job.get("salary_max")
+            sal_curr = job.get("salary_currency") or "$"
+            if pd.notna(sal_min) and pd.notna(sal_max):
+                salary_str = f"{sal_curr}{int(sal_min):,} - {sal_curr}{int(sal_max):,}"
+            else:
+                salary_str = "Not specified"
+                
+            sen_badge = ""
+            seniority = job.get("seniority")
+            if seniority and seniority != "Unspecified":
+                sen_badge = f'<span class="badge badge-sen">{seniority}</span>'
+                
+            src_badge = f'<span class="badge badge-src">{job["source"].upper()}</span>'
+            location = job.get("country") or "Remote"
+            
+            job_cards_html += f"""
+            <div class="job-card">
+                <div class="job-title-row">
+                    <a href="{job['url']}" class="job-title" target="_blank">{job['title']}</a>
+                    <div>
+                        {sen_badge}
+                        {src_badge}
+                    </div>
+                </div>
+                <div class="job-company">{job['company_name']}</div>
+                <div class="job-meta">
+                    <span>📍 {location}</span> &bull; 
+                    <span>💰 {salary_str}</span>
+                </div>
+            </div>
+            """
+            
+    html = f"""
+    <div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow: hidden; font-family: sans-serif; color: #c9d1d9; max-width: 500px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); padding: 16px; text-align: center; border-bottom: 1px solid #30363d;">
+            <h2 style="color: #58a6ff; margin: 0; font-size: 18px;">CareerLens Job Alerts</h2>
+            <p style="color: #8b949e; margin: 4px 0 0 0; font-size: 11px;">Global Remote Job Intelligence Digest</p>
+        </div>
+        <div style="padding: 16px;">
+            <p style="font-size: 13px; margin-bottom: 12px;">Hello <strong>{name or 'Subscriber'}</strong>,</p>
+            <p style="font-size: 12px; color: #8b949e; margin-bottom: 16px;">Here is your custom daily remote job digest for: {skills_list_str}. We found <strong>{len(matched_jobs)}</strong> new matches since your last update.</p>
+            
+            {job_cards_html}
+        </div>
+        <div style="background-color: #0d1117; padding: 12px; text-align: center; border-top: 1px solid #21262d; font-size: 10px; color: #8b949e;">
+            This email was sent by CareerLens.<br>
+            <span style="color: #f0883e; text-decoration: none;">Unsubscribe from job alerts</span>
+        </div>
+    </div>
+    <style>
+        .job-card {{
+            background-color: #0d1117;
+            border: 1px solid #21262d;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+            text-align: left;
+        }}
+        .job-title-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }}
+        .job-title {{
+            color: #58a6ff;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+        }}
+        .job-company {{
+            color: #e6edf3;
+            font-size: 11px;
+            margin-top: 2px;
+        }}
+        .job-meta {{
+            font-size: 10px;
+            color: #8b949e;
+            margin-top: 6px;
+        }}
+        .badge {{
+            display: inline-block;
+            font-size: 8px;
+            font-weight: 600;
+            padding: 1px 5px;
+            border-radius: 8px;
+            margin-left: 4px;
+            text-transform: uppercase;
+        }}
+        .badge-sen {{
+            background-color: #382402;
+            color: #f0883e;
+        }}
+        .badge-src {{
+            background-color: #162c46;
+            color: #58a6ff;
+        }}
+    </style>
+    """
+    return html
+
+
+def to_excel_data(df: pd.DataFrame) -> bytes:
+    """Convert a pandas DataFrame to an Excel file in-memory."""
+    import io
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Jobs Data")
+    return output.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
@@ -220,7 +367,9 @@ with st.sidebar:
             "📈 Time Trends",
             "💸 Salary Analysis",
             "🧠 Resume Matcher",
+            "📧 Email Alerts",
             "🗂️ Browse Jobs",
+            "🔖 Bookmarks",
         ],
         label_visibility="collapsed",
     )
@@ -591,172 +740,357 @@ elif page == "📈 Time Trends":
 
 # ---- Salary Analysis ---------------------------------------------------------
 elif page == "💸 Salary Analysis":
-    st.markdown("# 💸 Salary Analysis")
-    st.markdown("Salary insights extracted from job postings across all sources.")
+    st.markdown("# 💸 Salary Intelligence")
+    st.markdown("Dynamic salary aggregation and market intelligence parsed directly from our job trends database.")
     st.divider()
 
-    # Fetch 200 jobs to analyze salaries
-    jobs_df = _safe_fetch("/api/v1/jobs", {"page_size": 200})
+    # Fetch available currencies dynamically
+    currencies = []
+    try:
+        r_curr = requests.get(f"{BASE}/api/v1/salary/currencies", timeout=15)
+        if r_curr.status_code == 200:
+            currencies = r_curr.json()
+    except Exception as exc:
+        st.warning(f"Could not load active currencies: {exc}")
 
-    if not jobs_df.empty and "salary_min" in jobs_df.columns:
-        # Filter for jobs with valid salary data
-        salary_df = jobs_df.dropna(subset=["salary_min", "salary_max"]).copy()
+    if not currencies:
+        currencies = ["USD"]
+
+    selected_currency = st.selectbox("Select Currency", options=currencies)
+
+    # Fetch aggregated salary data
+    salary_role_df = _safe_fetch("/api/v1/salary/by-role", {"currency": selected_currency, "limit": 20})
+    salary_country_df = _safe_fetch("/api/v1/salary/by-country", {"currency": selected_currency, "limit": 20})
+
+    if not salary_role_df.empty:
+        # High-level KPIs
+        c1, c2, c3 = st.columns(3)
+        avg_sal_role = salary_role_df["avg_salary"].mean()
+        highest_paying_role = salary_role_df.iloc[0]["role"]
+        highest_paying_val = salary_role_df.iloc[0]["avg_salary"]
+        total_sal_jobs = salary_role_df["job_count"].sum()
+
+        _kpi(c1, f"{selected_currency} {int(avg_sal_role):,}", "Average Role Salary")
+        _kpi(c2, f"{highest_paying_role}", f"Top Role ({selected_currency} {int(highest_paying_val):,})")
+        _kpi(c3, f"{int(total_sal_jobs):,}", "Jobs Analysed")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        left_chart, right_chart = st.columns(2)
         
-        # Calculate average salary for each job
-        if not salary_df.empty:
-            salary_df["avg_salary"] = (salary_df["salary_min"] + salary_df["salary_max"]) / 2
-            
-            # Convert non-USD if we want, but since most are USD or we can just group by currency
-            currencies = [c for c in salary_df["salary_currency"].unique() if c]
-            selected_currency = st.selectbox("Select Currency", options=currencies if len(currencies) > 0 else ["USD"])
-            
-            curr_df = salary_df[salary_df["salary_currency"] == selected_currency]
-            
-            if not curr_df.empty:
-                # KPI Metrics
-                c1, c2, c3 = st.columns(3)
-                avg_sal = curr_df["avg_salary"].mean()
-                max_sal = curr_df["salary_max"].max()
-                pct_sal = (len(salary_df) / len(jobs_df)) * 100
-                
-                _kpi(c1, f"{selected_currency} {int(avg_sal):,}", "Average Salary")
-                _kpi(c2, f"{selected_currency} {int(max_sal):,}", "Maximum Salary")
-                _kpi(c3, f"{pct_sal:.1f}%", "Jobs with Salary Info")
-                
-                st.write("")
-                
-                # Chart 1: Salary Distribution Histogram
-                fig_dist = px.histogram(
-                    curr_df,
-                    x="avg_salary",
-                    nbins=15,
-                    title=f"Salary Distribution ({selected_currency})",
-                    labels={"avg_salary": "Average Salary"},
-                    color_discrete_sequence=[_ACCENT],
-                )
-                _apply_layout(fig_dist)
-                
-                # Chart 2: Average Salary by Seniority
-                seniority_grp = curr_df.groupby("seniority")["avg_salary"].mean().reset_index()
-                # Sort seniority logically
-                seniority_order = {"Junior": 0, "Mid-level": 1, "Senior": 2, "Lead": 3, "Unspecified": 4}
-                seniority_grp["sort_order"] = seniority_grp["seniority"].map(seniority_order).fillna(5)
-                seniority_grp = seniority_grp.sort_values("sort_order")
-                
-                fig_sen = px.bar(
-                    seniority_grp,
-                    x="seniority",
-                    y="avg_salary",
-                    title=f"Average Salary by Seniority ({selected_currency})",
-                    labels={"avg_salary": "Avg Salary", "seniority": "Seniority"},
-                    color="avg_salary",
-                    color_continuous_scale=px.colors.sequential.Blues,
-                )
-                _apply_layout(fig_sen)
-                
-                # Render charts side by side
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.plotly_chart(fig_dist, use_container_width=True)
-                with col2:
-                    st.plotly_chart(fig_sen, use_container_width=True)
-                    
-                st.divider()
-                
-                # Table: Top paying roles
-                st.subheader("🏆 Top Paying Postings")
-                top_paying = curr_df.sort_values(by="salary_max", ascending=False).head(10)
-                st.dataframe(
-                    top_paying[["title", "company_name", "seniority", "salary_min", "salary_max", "url"]],
-                    column_config={
-                        "url": st.column_config.LinkColumn("Job Link"),
-                        "salary_min": st.column_config.NumberColumn("Min Salary", format=f"{selected_currency} %.0f"),
-                        "salary_max": st.column_config.NumberColumn("Max Salary", format=f"{selected_currency} %.0f"),
-                    },
-                    use_container_width=True,
-                    hide_index=True,
-                )
-            else:
-                st.info(f"No salary records found for currency: {selected_currency}")
-        else:
-            st.info("No jobs in this batch have explicit salary ranges. Try running the live pipeline to fetch newer jobs.")
-    else:
-        st.info("No job data available. Run the pipeline to ingest jobs.")
+        with left_chart:
+            st.markdown('<div class="section-header">Average Salary by Role</div>', unsafe_allow_html=True)
+            fig_role = px.bar(
+                salary_role_df.head(top_n),
+                x="avg_salary",
+                y="role",
+                orientation="h",
+                color="avg_salary",
+                color_continuous_scale="Blues",
+                template=_PLOTLY_THEME,
+                labels={"avg_salary": "Average Salary", "role": ""},
+            )
+            fig_role.update_coloraxes(showscale=False)
+            fig_role.update_layout(**_CHART_LAYOUT, yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig_role, use_container_width=True)
 
-# ---- Resume Skill Matcher ----------------------------------------------------
+        with right_chart:
+            st.markdown('<div class="section-header">Average Salary by Country</div>', unsafe_allow_html=True)
+            if not salary_country_df.empty:
+                fig_country = px.bar(
+                    salary_country_df.head(top_n),
+                    x="avg_salary",
+                    y="country",
+                    orientation="h",
+                    color="avg_salary",
+                    color_continuous_scale="Purples",
+                    template=_PLOTLY_THEME,
+                    labels={"avg_salary": "Average Salary", "country": ""},
+                )
+                fig_country.update_coloraxes(showscale=False)
+                fig_country.update_layout(**_CHART_LAYOUT, yaxis={"categoryorder": "total ascending"})
+                st.plotly_chart(fig_country, use_container_width=True)
+            else:
+                _empty_chart("Country Salaries")
+
+        st.divider()
+
+        # Data Table
+        st.subheader("📊 Detailed Salary Metrics")
+        st.dataframe(
+            salary_role_df[["role", "avg_salary", "min_salary", "max_salary", "job_count"]],
+            column_config={
+                "role": st.column_config.TextColumn("Job Title / Role"),
+                "avg_salary": st.column_config.NumberColumn("Avg Salary", format=f"{selected_currency} %.0f"),
+                "min_salary": st.column_config.NumberColumn("Min Salary", format=f"{selected_currency} %.0f"),
+                "max_salary": st.column_config.NumberColumn("Max Salary", format=f"{selected_currency} %.0f"),
+                "job_count": st.column_config.NumberColumn("Job Postings Count"),
+            },
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        # Export capabilities
+        st.write("")
+        exp_sal1, exp_sal2, _ = st.columns([1.2, 1.2, 4])
+        with exp_sal1:
+            csv_sal = salary_role_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Export Salaries (CSV)",
+                data=csv_sal,
+                file_name=f"careerlens_role_salaries_{selected_currency}.csv",
+                mime="text/csv",
+                key="download_salary_csv"
+            )
+        with exp_sal2:
+            try:
+                excel_sal = to_excel_data(salary_role_df)
+                st.download_button(
+                    label="📈 Export Salaries (Excel)",
+                    data=excel_sal,
+                    file_name=f"careerlens_role_salaries_{selected_currency}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_salary_excel"
+                )
+            except Exception as e:
+                st.caption(f"Excel export disabled: {e}")
+    else:
+        st.info("No salary details found in the database. Run the pipeline with live source to import jobs with salary info.")
+
+# ---- AI Resume Matcher ----------------------------------------------------
 elif page == "🧠 Resume Matcher":
-    st.markdown("# 🧠 Resume Skill Matcher")
-    st.markdown("Paste your skills or resume description below to find matching remote jobs in our database.")
+    st.markdown("# 🧠 AI-Powered Resume Matcher")
+    st.markdown("Provide your resume or skills. Gemini AI will build a professional summary, extract key skills, suggest roles, and recommend the best-matching remote jobs.")
     st.divider()
 
-    # User input for resume/skills
-    user_input = st.text_area(
-        "Enter your skills, tech stack, or paste your resume text:",
-        placeholder="e.g. Python, SQL, PostgreSQL, Docker, FastAPI, dbt, pandas, AWS, git",
+    # User input
+    resume_input = st.text_area(
+        "Paste your resume or skills details below:",
+        placeholder="e.g. Senior Data Engineer with 5 years experience in Python, PostgreSQL, AWS, Apache Spark, Airflow, and building data pipelines.",
         height=150,
     )
 
-    if user_input:
-        # Simple tokenization of user input
-        import re
-        user_skills = set(re.findall(r'\b[a-zA-Z0-9+#\-\.]+\b', user_input.lower()))
-        
-        # Filter out common stop words / short words unless they are valid tech keywords (like c, go, r)
-        stopwords = {"and", "the", "with", "for", "from", "using", "experience", "work", "skills", "development", "data", "software", "engineer", "developer", "role"}
-        cleaned_skills = {s for s in user_skills if s not in stopwords and (len(s) > 1 or s in ["c", "r", "go"])}
-        
-        if cleaned_skills:
-            st.write(f"🔍 Identified skills: " + ", ".join(f"`{s}`" for s in sorted(cleaned_skills)))
-            
-            # Fetch batch of jobs to match
-            jobs_df = _safe_fetch("/api/v1/jobs", {"page_size": 200})
-            
-            if not jobs_df.empty:
-                matches = []
-                for _, row in jobs_df.iterrows():
-                    # Extract job terms
-                    job_tags = set(row.get("tags") or [])
-                    # Add words from job title to improve matching
-                    title_words = set(re.findall(r'\b[a-zA-Z0-9+#\-\.]+\b', row["title"].lower()))
-                    job_terms = job_tags.union(title_words)
-                    
-                    # Intersect skills
-                    matched = cleaned_skills.intersection(job_terms)
-                    
-                    if matched:
-                        score = (len(matched) / len(cleaned_skills)) * 100
-                        matches.append({
-                            "title": row["title"],
-                            "company_name": row["company_name"],
-                            "country": row.get("country") or "Remote",
-                            "seniority": row.get("seniority") or "Mid-level",
-                            "matched_skills": list(matched),
-                            "match_score": round(score),
-                            "url": row["url"]
-                        })
-                
-                if matches:
-                    match_df = pd.DataFrame(matches).sort_values(by="match_score", ascending=False)
-                    st.success(f"🎉 Found **{len(match_df)}** matching jobs!")
-                    
-                    # Render matches
-                    st.dataframe(
-                        match_df[["match_score", "title", "company_name", "country", "seniority", "matched_skills", "url"]],
-                        column_config={
-                            "match_score": st.column_config.ProgressColumn("Match Score", min_value=0, max_value=100, format="%d%%"),
-                            "url": st.column_config.LinkColumn("Apply Link"),
-                        },
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-                else:
-                    st.info("No matching jobs found. Try entering different or more specific technical skills (e.g., Python, SQL, AWS).")
-            else:
-                st.info("No jobs available to match against.")
+    if resume_input:
+        if len(resume_input.strip()) < 10:
+            st.warning("Please provide a longer description (at least 10 characters).")
         else:
-            st.warning("Please enter some valid tech skills (e.g. 'Python, SQL').")
+            with st.spinner("🧠 Gemini AI is analysing your resume..."):
+                payload = {
+                    "resume_text": resume_input,
+                    "top_n": top_n
+                }
+                try:
+                    r = requests.post(f"{BASE}/api/v1/ai/recommend", json=payload, timeout=30)
+                    if r.status_code == 200:
+                        result = r.json()
+                        
+                        # Render AI analysis profile
+                        st.subheader("🤖 AI Career Profile Summary")
+                        st.markdown(
+                            f"""
+                            <div style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 1px solid #30363d; border-radius: 12px; padding: 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); margin-bottom: 24px;">
+                                <p style="font-size: 1.05rem; line-height: 1.6; color: #e6edf3; font-style: italic; margin: 0;">
+                                    "{result['ai_summary']}"
+                                </p>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+
+                        # Render extracted skills
+                        st.subheader("🛠️ Extracted Technical Skills")
+                        skills_html = "".join(
+                            f'<span style="background-color: #162c46; color: #58a6ff; font-weight: 500; font-size: 0.85rem; padding: 4px 12px; border-radius: 16px; margin-right: 8px; margin-bottom: 8px; display: inline-block; border: 1px solid #30363d;">{s}</span>'
+                            for s in result["extracted_skills"]
+                        )
+                        st.markdown(skills_html, unsafe_allow_html=True)
+                        st.write("")
+
+                        # Render recommended roles if any
+                        if result.get("recommended_roles"):
+                            st.subheader("💼 Recommended Positions")
+                            roles_html = "".join(
+                                f'<span style="background-color: #382402; color: #f0883e; font-weight: 500; font-size: 0.85rem; padding: 4px 12px; border-radius: 16px; margin-right: 8px; margin-bottom: 8px; display: inline-block; border: 1px solid #30363d;">{r}</span>'
+                                for r in result["recommended_roles"]
+                            )
+                            st.markdown(roles_html, unsafe_allow_html=True)
+                            st.write("")
+
+                        # Render matching jobs
+                        st.subheader("🎯 Matching Jobs in Database")
+                        matched_jobs = result["matched_jobs"]
+                        
+                        if matched_jobs:
+                            st.success(f"Found {len(matched_jobs)} matching job listings!")
+                            for idx, job in enumerate(matched_jobs):
+                                title = job["title"]
+                                company = job["company_name"]
+                                source = job["source"].upper()
+                                url = job["url"]
+                                location = job.get("country") or "Remote"
+                                seniority = job.get("seniority") or "Unspecified"
+                                job_id = job["id"]
+
+                                salary_str = "Not specified"
+                                if job.get("salary_min") and job.get("salary_max"):
+                                    curr = job.get("salary_currency") or "$"
+                                    salary_str = f"{curr}{int(job['salary_min']):,} - {curr}{int(job['salary_max']):,}"
+
+                                with st.container():
+                                    st.markdown(
+                                        f"""
+                                        <div style="background-color: #161b22; border: 1px solid #21262d; border-radius: 12px; padding: 18px; margin-bottom: 12px;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                <h4 style="margin: 0; font-size: 1.1rem;"><a href="{url}" target="_blank" style="color: #58a6ff; text-decoration: none;">{title}</a></h4>
+                                                <div>
+                                                    <span style="background-color: #162c46; color: #58a6ff; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; text-transform: uppercase;">{source}</span>
+                                                    <span style="background-color: #382402; color: #f0883e; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; text-transform: uppercase; margin-left: 6px;">{seniority}</span>
+                                                </div>
+                                            </div>
+                                            <div style="color: #e6edf3; font-weight: 500; font-size: 0.95rem; margin-top: 4px;">{company}</div>
+                                            <div style="color: #8b949e; font-size: 0.8rem; margin-top: 8px;">
+                                                📍 {location} &bull; 💰 {salary_str} &bull; ID: #{job_id}
+                                            </div>
+                                        </div>
+                                        """,
+                                        unsafe_allow_html=True
+                                    )
+                                    
+                                    # Inline bookmark button
+                                    bookmark_btn_col, _ = st.columns([1.5, 4.5])
+                                    with bookmark_btn_col:
+                                        if st.button("⭐ Bookmark Job", key=f"ai_bk_{job_id}_{idx}", use_container_width=True):
+                                            try:
+                                                resp = requests.post(f"{BASE}/api/v1/bookmarks", json={"job_id": job_id}, timeout=15)
+                                                if resp.status_code == 201:
+                                                    st.toast(f"Bookmarked Job #{job_id} successfully!")
+                                                else:
+                                                    st.error(f"Could not bookmark: {resp.text}")
+                                            except Exception as e:
+                                                st.error(str(e))
+                                    st.write("")
+                        else:
+                            st.info("No matching jobs in the database. Add more detailed tech stack components to match against.")
+                    else:
+                        st.error(f"Failed to fetch recommendations: {r.text}")
+                except Exception as exc:
+                    st.error(f"Connection error: {exc}")
     else:
-        st.info("💡 Paste your skills above, and we will scan our database of active jobs to show you matching postings.")
+        st.info("💡 Enter your developer/analyst profile details or paste your resume text to trigger AI job intelligence.")
+
+# ---- Email Alerts ------------------------------------------------------------
+elif page == "📧 Email Alerts":
+    st.markdown("# 📧 Job Alert Email Subscriptions")
+    st.markdown("Set up a customized daily email digest of newly ingested remote jobs matching your skills.")
+    st.divider()
+
+    # Dynamic loading of skill options for multiselect
+    skills_df = _safe_fetch("/api/v1/trends/skills", {"limit": 100})
+    if not skills_df.empty and "skill" in skills_df.columns:
+        skill_options = sorted(skills_df["skill"].unique().tolist())
+    else:
+        skill_options = ["python", "sql", "aws", "docker", "fastapi", "javascript", "react", "kubernetes", "golang", "machine learning"]
+
+    tab1, tab2, tab3 = st.tabs(["✍️ Subscribe", "🚫 Unsubscribe", "🚀 Trigger Alerts Cycle"])
+
+    with tab1:
+        st.subheader("Create or Update Subscription")
+        col1, col2 = st.columns(2)
+        with col1:
+            sub_name = st.text_input("Your Name", placeholder="e.g. Alex Johnson")
+            sub_email = st.text_input("Your Email", placeholder="e.g. alex@example.com")
+            selected_skills = st.multiselect(
+                "Filter by Skills (Leave empty to receive all jobs)",
+                options=skill_options,
+                help="Select specific technology tags you want to monitor."
+            )
+            
+            custom_skills = st.text_input("Add other custom skills (comma-separated)", placeholder="e.g. pytorch, dbt")
+            if custom_skills:
+                extra_skills = [s.strip().lower() for s in custom_skills.split(",") if s.strip()]
+                selected_skills = list(set(selected_skills + extra_skills))
+
+            if st.button("Subscribe", type="primary"):
+                if not sub_name or not sub_email:
+                    st.error("Please fill in both Name and Email fields.")
+                elif "@" not in sub_email or "." not in sub_email:
+                    st.error("Please enter a valid email address.")
+                else:
+                    payload = {
+                        "name": sub_name,
+                        "email": sub_email,
+                        "skills": selected_skills
+                    }
+                    try:
+                        r = requests.post(f"{BASE}/api/v1/subscriptions", json=payload, timeout=15)
+                        if r.status_code == 201:
+                            st.success(f"🎉 Successfully subscribed {sub_email}!")
+                            st.info(
+                                "✉️ Email Alerts are active! If real SMTP credentials are not configured in settings, "
+                                "the pipeline will run in simulation mode and save the HTML email digests to "
+                                "`logs/email_alerts/`."
+                            )
+                        else:
+                            st.error(f"Failed to subscribe: {r.text}")
+                    except Exception as exc:
+                        st.error(f"Error connecting to server: {exc}")
+
+        with col2:
+            st.markdown("### 📧 Live Email Preview")
+            st.caption("This mockup dynamically updates to show what your next digest email will look like:")
+            preview_jobs_df = _safe_fetch("/api/v1/jobs", {"page_size": 100})
+            preview_name = sub_name or "Subscriber"
+            preview_html = get_mock_email_html(preview_name, selected_skills, preview_jobs_df)
+            st.components.v1.html(preview_html, height=450, scrolling=True)
+
+    with tab2:
+        st.subheader("Cancel Subscription")
+        unsub_email = st.text_input("Email to Unsubscribe", placeholder="your_email@example.com")
+        if st.button("Cancel Alerts", type="secondary"):
+            if not unsub_email:
+                st.error("Please enter your registered email address.")
+            else:
+                try:
+                    payload = {"email": unsub_email}
+                    r = requests.post(f"{BASE}/api/v1/subscriptions/unsubscribe", json=payload, timeout=15)
+                    if r.status_code == 200:
+                        st.success(f"🚫 Successfully unsubscribed {unsub_email} from all job alerts.")
+                    elif r.status_code == 404:
+                        st.warning(f"No active subscription found for email: {unsub_email}")
+                    else:
+                        st.error(f"Error unsubscribing: {r.text}")
+                except Exception as exc:
+                    st.error(f"Error connecting to server: {exc}")
+
+    with tab3:
+        st.subheader("🚀 Manual Alerts Dispatch Cycle")
+        st.markdown(
+            "Click the button below to manually run the alert cycle now. This will query all active subscribers, "
+            "fetch matching jobs ingested since their last alert, build custom HTML digests, and dispatch them via SMTP "
+            "(or save them to the local `logs/email_alerts/` directory if simulated)."
+        )
+        
+        force_option = st.checkbox("Bypass 23h elapsed limit (Force send)", value=True)
+        
+        if st.button("Dispatch Job Alerts Now", type="primary"):
+            with st.spinner("Processing subscription digests..."):
+                try:
+                    r = requests.post(f"{BASE}/api/v1/subscriptions/trigger?force={str(force_option).lower()}", timeout=30)
+                    if r.status_code == 200:
+                        data = r.json()
+                        st.success(f"🎉 Success: {data['message']}")
+                        st.balloons()
+                        
+                        # Give context if simulated
+                        st.info(
+                            "📂 Simulated HTML output digests are saved at **`logs/email_alerts/`** "
+                            "within the project directory. Go there to inspect the generated HTML emails!"
+                        )
+                    else:
+                        st.error(f"Failed to dispatch: {r.text}")
+                except Exception as exc:
+                    st.error(f"Failed to trigger alerts: {exc}")
+
 
 # ---- Browse Jobs -------------------------------------------------------------
 elif page == "🗂️ Browse Jobs":
@@ -795,6 +1129,7 @@ elif page == "🗂️ Browse Jobs":
         st.dataframe(
             display_df[
                 [
+                    "id",
                     "title",
                     "company_name",
                     "country",
@@ -808,6 +1143,7 @@ elif page == "🗂️ Browse Jobs":
                 ]
             ],
             column_config={
+                "id": st.column_config.NumberColumn("Job ID", format="%d"),
                 "url": st.column_config.LinkColumn("Job Link", help="Click to open the job posting"),
                 "publication_date": st.column_config.DatetimeColumn("Published At"),
                 "salary_min": st.column_config.NumberColumn("Min Salary", format="$%.0f"),
@@ -818,8 +1154,142 @@ elif page == "🗂️ Browse Jobs":
             use_container_width=True,
             hide_index=True,
         )
+
+        # Export browse jobs data
+        st.write("")
+        exp_col1, exp_col2, _ = st.columns([1.2, 1.2, 4])
+        with exp_col1:
+            csv_data = display_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Export Jobs (CSV)",
+                data=csv_data,
+                file_name="careerlens_browse_jobs.csv",
+                mime="text/csv",
+                key="download_browse_csv"
+            )
+        with exp_col2:
+            try:
+                excel_data = to_excel_data(display_df)
+                st.download_button(
+                    label="📈 Export Jobs (Excel)",
+                    data=excel_data,
+                    file_name="careerlens_browse_jobs.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_browse_excel"
+                )
+            except Exception as e:
+                st.caption(f"Excel export disabled: {e}")
+
+        st.divider()
+        st.subheader("🔖 Save/Bookmark Job")
+        bk_col1, bk_col2, bk_col3 = st.columns([2, 3, 1.5])
+        with bk_col1:
+            job_to_bookmark = st.number_input("Enter Job ID to Bookmark", min_value=0, step=1, value=0)
+        with bk_col2:
+            bookmark_notes = st.text_input("Add personal notes (optional)", placeholder="e.g. Apply by Friday, High match")
+        with bk_col3:
+            st.write("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("⭐ Bookmark Job", use_container_width=True):
+                if job_to_bookmark == 0:
+                    st.error("Please enter a valid Job ID.")
+                else:
+                    try:
+                        resp = requests.post(
+                            f"{BASE}/api/v1/bookmarks",
+                            json={"job_id": job_to_bookmark, "notes": bookmark_notes or None},
+                            timeout=15
+                        )
+                        if resp.status_code == 201:
+                            st.success(f"Starred job #{job_to_bookmark}!")
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {resp.json().get('detail', resp.text)}")
+                    except Exception as exc:
+                        st.error(f"Connection error: {exc}")
     else:
         _empty_chart("Jobs")
+
+
+# ---- Bookmarks Page -----------------------------------------------------------
+elif page == "🔖 Bookmarks":
+    st.markdown("# 🔖 Starred & Bookmarked Jobs")
+    st.markdown("Your saved remote job opportunities with personal notes.")
+    st.divider()
+
+    try:
+        r = requests.get(f"{BASE}/api/v1/bookmarks", timeout=15)
+        r.raise_for_status()
+        bookmarks = r.json()
+    except Exception as exc:
+        st.error(f"Could not load bookmarks: {exc}")
+        bookmarks = []
+
+    if not bookmarks:
+        st.info("No bookmarks saved yet. Go to **🗂️ Browse Jobs** to star your first remote job!")
+    else:
+        st.caption(f"You have **{len(bookmarks)}** starred job listings")
+        
+        # Display bookmarks as premium cards
+        for b in bookmarks:
+            b_id = b["id"]
+            job_id = b["job_id"]
+            title = b["title"] or "Unknown Job"
+            company = b["company_name"] or "Unknown Company"
+            notes = b["notes"] or ""
+            source = b["source"].upper()
+            url = b["url"]
+            bookmarked_at = b["bookmarked_at"][:10]  # Show date only
+
+            # Layout each bookmark card elegantly
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+                        <span style="background-color: #21262d; color: #58a6ff; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 12px; margin-right: 8px;">ID: {job_id}</span>
+                        <span style="background-color: #1f2937; color: #8b949e; font-size: 0.7rem; padding: 2px 8px; border-radius: 12px;">{source}</span>
+                        <h3 style="margin: 8px 0 2px 0;"><a href="{url}" target="_blank" style="color: #58a6ff; text-decoration: none;">{title}</a></h3>
+                        <div style="color: #c9d1d9; font-weight: 500; font-size: 0.9rem; margin-bottom: 8px;">{company}</div>
+                        <div style="font-size: 0.75rem; color: #8b949e; margin-bottom: 12px;">Saved on {bookmarked_at}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+                # Interactive Note and Delete buttons
+                note_col, del_col = st.columns([5, 1])
+                with note_col:
+                    new_notes = st.text_input(
+                        "Personal Notes",
+                        value=notes,
+                        placeholder="Click enter to save notes...",
+                        key=f"note_input_{job_id}"
+                    )
+                    if new_notes != notes:
+                        try:
+                            resp = requests.put(
+                                f"{BASE}/api/v1/bookmarks/{job_id}",
+                                json={"notes": new_notes or None},
+                                timeout=15
+                            )
+                            if resp.status_code == 200:
+                                st.success("Notes saved!")
+                                st.rerun()
+                        except Exception as exc:
+                            st.error(f"Error saving notes: {exc}")
+                with del_col:
+                    st.write("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                    if st.button("🗑️ Remove", key=f"del_btn_{job_id}", use_container_width=True):
+                        try:
+                            resp = requests.delete(f"{BASE}/api/v1/bookmarks/{job_id}", timeout=15)
+                            if resp.status_code == 200:
+                                st.success("Removed!")
+                                st.rerun()
+                        except Exception as exc:
+                            st.error(f"Error: {exc}")
+                
+                st.markdown("<hr style='margin: 16px 0; border-color: #21262d;'>", unsafe_allow_html=True)
+
+
 
 
 # ---------------------------------------------------------------------------

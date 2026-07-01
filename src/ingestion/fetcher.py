@@ -269,6 +269,149 @@ def fetch_from_arbeitnow(max_pages: int = 10) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# JSearch (RapidAPI) — requires JSEARCH_API_KEY in .env
+# ---------------------------------------------------------------------------
+
+def fetch_from_jsearch(
+    query: str = "software engineer",
+    num_pages: int = 3,
+) -> list[dict[str, Any]]:
+    """Fetch jobs from JSearch API via RapidAPI (requires JSEARCH_API_KEY).
+
+    JSearch aggregates listings from LinkedIn, Indeed, Glassdoor, ZipRecruiter,
+    and more. The free RapidAPI tier provides ~200 calls/month.
+
+    Args:
+        query: Job search query string (default: ``"software engineer"``).
+        num_pages: Number of pages to fetch (10 results per page by default).
+
+    Returns:
+        A list of normalised job dicts, or an empty list if the API key is
+        not configured or the request fails.
+    """
+    if not settings.jsearch_api_key:
+        logger.info("JSearch: JSEARCH_API_KEY is not set — skipping this source.")
+        return []
+
+    if settings.jsearch_api_key == "mock_dev_key":
+        logger.info("JSearch: Running in mock dev mode — generating mock JSearch jobs.")
+        mock_jobs = []
+        titles = [
+            "Senior AI Architect", "Lead PyTorch Developer", "Backend Python Engineer",
+            "FastAPI Software Engineer", "Data Engineer", "Machine Learning Specialist",
+            "Full Stack Python Developer", "DevOps Engineer (GCP)", "Data Platform Engineer",
+            "AI Platform Architect"
+        ]
+        companies = ["AlphaIntelligence", "TensorForge", "ByteScale", "CloudOptima", "PyNexus"]
+        locations = ["US", "DE", "CA", "GB", "Worldwide"]
+        
+        for idx in range(50):
+            job_id_raw = f"mock-js-{1000 + idx}"
+            stable_id = abs(hash(f"jsearch:{job_id_raw}")) % 1_000_000_000 + 2_500_000_000
+            title = titles[idx % len(titles)]
+            company = companies[idx % len(companies)]
+            loc = locations[idx % len(locations)]
+            
+            mock_jobs.append({
+                "id": stable_id,
+                "url": f"https://mock-jsearch.com/jobs/{idx}",
+                "title": f"{title} (Mock)",
+                "company_name": company,
+                "company_logo": "https://example.com/logo.png",
+                "category": "Engineering",
+                "tags": ["python", "fastapi", "gcp", "pytorch", "django"][:(idx % 4 + 2)],
+                "job_type": "full_time" if idx % 2 == 0 else "contract",
+                "publication_date": "2026-06-11T12:00:00+00:00",
+                "candidate_required_location": loc,
+                "salary": f"{100000 + (idx * 1500)}-{140000 + (idx * 2000)} USD",
+                "description": f"This is a premium mock JSearch listing for a remote {title} position.",
+                "source": "jsearch",
+            })
+        return mock_jobs
+
+    headers = {
+        "x-rapidapi-host": "jsearch.p.rapidapi.com",
+        "x-rapidapi-key": settings.jsearch_api_key,
+    }
+
+    queries = [
+        "software engineer remote",
+        "data engineer remote",
+        "python developer remote",
+        "machine learning remote",
+        "devops remote",
+    ]
+
+    all_jobs: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    for q in queries[:num_pages]:  # limit total unique queries
+        try:
+            resp = requests.get(
+                settings.jsearch_api_url,
+                headers=headers,
+                params={"query": q, "page": "1", "num_pages": "1"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            logger.info("JSearch query='%s': %d raw results", q, len(data))
+        except Exception as exc:
+            logger.warning("JSearch query='%s' failed: %s", q, exc)
+            continue
+
+        for job in data:
+            job_id_raw = job.get("job_id") or ""
+            if not job_id_raw or job_id_raw in seen_ids:
+                continue
+            seen_ids.add(job_id_raw)
+
+            # Stable integer ID in JSearch namespace (2.5B–3.5B)
+            stable_id = abs(hash(f"jsearch:{job_id_raw}")) % 1_000_000_000 + 2_500_000_000
+
+            # Parse tags from job highlights or required skills
+            tags_raw: list[str] = []
+            highlights = job.get("job_highlights") or {}
+            qualifications = highlights.get("Qualifications") or []
+            for qual in qualifications:
+                # Tokenize common tech keywords from qualification strings
+                import re as _re
+                found = _re.findall(
+                    r"\b(python|java|javascript|typescript|golang|rust|sql|postgres|mysql|aws|gcp|azure|docker|kubernetes|kafka|spark|tensorflow|pytorch|react|node|fastapi|django|flask)\b",
+                    qual.lower(),
+                )
+                tags_raw.extend(found)
+            tags_raw = list(dict.fromkeys(tags_raw))  # deduplicate preserving order
+
+            pub_date = job.get("job_posted_at_datetime_utc") or "2024-01-01T00:00:00+00:00"
+
+            salary_str = None
+            sal_min = job.get("job_min_salary")
+            sal_max = job.get("job_max_salary")
+            if sal_min or sal_max:
+                salary_str = f"{sal_min or ''}-{sal_max or ''} {job.get('job_salary_currency', 'USD')}"
+
+            all_jobs.append({
+                "id": stable_id,
+                "url": job.get("job_apply_link") or job.get("job_google_link") or "https://jsearch.p.rapidapi.com",
+                "title": job.get("job_title") or "Unknown Role",
+                "company_name": job.get("employer_name") or "Unknown Company",
+                "company_logo": job.get("employer_logo"),
+                "category": job.get("job_category") or (tags_raw[0] if tags_raw else None),
+                "tags": tags_raw,
+                "job_type": job.get("job_employment_type") or "full_time",
+                "publication_date": pub_date,
+                "candidate_required_location": job.get("job_country") or job.get("job_city") or "Worldwide",
+                "salary": salary_str,
+                "description": job.get("job_description"),
+                "source": "jsearch",
+            })
+
+    logger.info("JSearch: %d unique jobs normalised from %d queries", len(all_jobs), len(queries[:num_pages]))
+    return all_jobs
+
+
+# ---------------------------------------------------------------------------
 # Kaggle fallback (local CSV seed)
 # ---------------------------------------------------------------------------
 
@@ -307,22 +450,25 @@ def fetch_from_kaggle_fallback(csv_path: str | Path | None = None) -> list[dict[
 # ---------------------------------------------------------------------------
 
 def fetch_all_sources() -> list[dict[str, Any]]:
-    """Fetch from Remotive (all categories), RemoteOK, and Arbeitnow in parallel.
+    """Fetch from Remotive (all categories), RemoteOK, Arbeitnow, and JSearch in parallel.
 
-    Runs all three APIs concurrently using a thread pool, then deduplicates
+    Runs all live APIs concurrently using a thread pool, then deduplicates
     by job URL so overlapping listings are not double-counted.
+    JSearch is included only when ``JSEARCH_API_KEY`` is configured.
 
     Returns:
         Merged, deduplicated list of raw normalised job dicts from all sources.
     """
-    source_fns = {
+    source_fns: dict[str, Any] = {
         "remotive": fetch_from_remotive_all_categories,
         "remoteok": fetch_from_remoteok,
-        "arbeitnow": fetch_from_arbeitnow,
+        "arbeitnow": lambda: fetch_from_arbeitnow(max_pages=50),
     }
+    if settings.jsearch_api_key:
+        source_fns["jsearch"] = fetch_from_jsearch
 
     results: dict[str, list[dict[str, Any]]] = {k: [] for k in source_fns}
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=min(4, len(source_fns))) as pool:
         future_to_name = {pool.submit(fn): name for name, fn in source_fns.items()}
         for future in as_completed(future_to_name):
             name = future_to_name[future]
@@ -333,18 +479,19 @@ def fetch_all_sources() -> list[dict[str, Any]]:
 
     seen_urls: set[str] = set()
     merged: list[dict[str, Any]] = []
-    for name in ("remotive", "remoteok", "arbeitnow"):
-        for job in results[name]:
+    for name in ["remotive", "remoteok", "arbeitnow", "jsearch"]:
+        for job in results.get(name, []):
             url = job.get("url", "")
             if url and url not in seen_urls:
                 seen_urls.add(url)
                 merged.append(job)
 
     logger.info(
-        "fetch_all_sources: remotive=%d  remoteok=%d  arbeitnow=%d  → total_unique=%d",
-        len(results["remotive"]),
-        len(results["remoteok"]),
-        len(results["arbeitnow"]),
+        "fetch_all_sources: remotive=%d  remoteok=%d  arbeitnow=%d  jsearch=%d -> total_unique=%d",
+        len(results.get("remotive", [])),
+        len(results.get("remoteok", [])),
+        len(results.get("arbeitnow", [])),
+        len(results.get("jsearch", [])),
         len(merged),
     )
     return merged

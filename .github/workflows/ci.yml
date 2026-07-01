@@ -41,26 +41,26 @@ jobs:
     needs: lint
 
     services:
-      postgres:
-        image: postgres:16-alpine
+      mysql:
+        image: mysql:8.0
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: careerlens
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: careerlens
         ports:
-          - 5432:5432
+          - 3306:3306
         options: >-
-          --health-cmd "pg_isready -U postgres -d careerlens"
+          --health-cmd "mysqladmin ping -h localhost -u root -proot"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
     env:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: careerlens
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: 5432
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DB: careerlens
+      MYSQL_HOST: localhost
+      MYSQL_PORT: 3306
+      DATABASE_URL: "mysql+pymysql://root:root@localhost:3306/careerlens?charset=utf8mb4"
       API_BASE_URL: http://localhost:8000
       ENV: test
 

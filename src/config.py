@@ -24,11 +24,11 @@ class Settings(BaseSettings):
     log_dir: str = Field(default="logs")
     log_file: str = Field(default="careerlens.log")
 
-    postgres_user: str = Field(default="postgres")
-    postgres_password: str = Field(default="postgres")
-    postgres_db: str = Field(default="careerlens")
-    postgres_host: str = Field(default="localhost")
-    postgres_port: int = Field(default=5432)
+    mysql_user: str = Field(default="root")
+    mysql_password: str = Field(default="")
+    mysql_db: str = Field(default="careerlens")
+    mysql_host: str = Field(default="localhost")
+    mysql_port: int = Field(default=3306)
     database_url_override: str | None = Field(default=None, alias="DATABASE_URL")
 
     remotive_api_url: str = Field(default="https://remotive.com/api/remote-jobs")
@@ -46,6 +46,24 @@ class Settings(BaseSettings):
     # Intentionally a short-interval batch pipeline (not streaming).
     pipeline_interval_minutes: int = Field(default=5)
 
+    # Email / SMTP settings for daily job alert digests
+    smtp_host: str = Field(default="smtp.gmail.com")
+    smtp_port: int = Field(default=587)
+    smtp_user: str = Field(default="")
+    smtp_password: str = Field(default="")
+    smtp_from_name: str = Field(default="CareerLens Alerts")
+
+    # JSearch / RapidAPI settings for 4th live job source
+    # Get a free key at https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
+    # Leave JSEARCH_API_KEY empty to disable this source gracefully
+    jsearch_api_key: str = Field(default="")
+    jsearch_api_url: str = Field(default="https://jsearch.p.rapidapi.com/search")
+
+    # Google Gemini API key for AI-powered job recommendations
+    # Get a free key at https://aistudio.google.com/app/apikey
+    gemini_api_key: str = Field(default="")
+
+
     @computed_field
     @property
     def database_url(self) -> str:
@@ -53,8 +71,9 @@ class Settings(BaseSettings):
         if self.database_url_override:
             return self.database_url_override
         return (
-            f"postgresql://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"mysql+pymysql://{self.mysql_user}:{self.mysql_password}"
+            f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_db}"
+            f"?charset=utf8mb4"
         )
 
     @computed_field

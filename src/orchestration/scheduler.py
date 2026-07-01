@@ -25,7 +25,9 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from src.config import settings
+from src.ingestion.db import get_session
 from src.logger import logger
+from src.orchestration.email_alerts import send_job_alerts
 from src.orchestration.runner import run_pipeline
 
 
@@ -42,6 +44,17 @@ def _job(source: str, db_url: str | None, use_dbt: bool) -> None:
             ingestion.get("valid", "—"),
             transformation.get("silver_jobs", "—"),
         )
+        
+        # Trigger job alert digests
+        logger.info("Scheduler starting email alerts check...")
+        session = get_session(db_url=db_url)
+        try:
+            alerts_sent = send_job_alerts(session, force=False)
+            logger.info("Scheduler email alerts check finished. Alerts sent: %d", alerts_sent)
+        except Exception as exc:
+            logger.error("Error running email alerts dispatch: %s", exc)
+        finally:
+            session.close()
     else:
         logger.error("Scheduled pipeline run failed: %s", result)
 

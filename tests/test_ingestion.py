@@ -68,3 +68,81 @@ def test_ingestion_pipeline_fallback(sqlite_db_url: str, mocker: pytest.MonkeyPa
     assert result["status"] == "success"
     assert result["source"] == "kaggle"
     assert result["valid"] == 1
+
+
+def test_fetch_from_jsearch_no_key(mocker: pytest.MonkeyPatch) -> None:
+    # Verify it returns empty list if jsearch_api_key is empty
+    mocker.patch("src.ingestion.fetcher.settings.jsearch_api_key", "")
+    from src.ingestion.fetcher import fetch_from_jsearch
+    assert fetch_from_jsearch() == []
+
+
+def test_fetch_from_jsearch_success(mocker: pytest.MonkeyPatch) -> None:
+    mocker.patch("src.ingestion.fetcher.settings.jsearch_api_key", "mocked-key")
+    mocker.patch("src.ingestion.fetcher.settings.jsearch_api_url", "http://mock-url")
+
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {
+        "data": [
+            {
+                "job_id": "xyz-123",
+                "job_apply_link": "https://example.com/apply",
+                "job_title": "Senior AI Architect",
+                "employer_name": "DeepMind Partner",
+                "employer_logo": "https://example.com/logo.png",
+                "job_category": "Engineering",
+                "job_posted_at_datetime_utc": "2026-06-11T12:00:00.000Z",
+                "job_country": "US",
+                "job_min_salary": 120000,
+                "job_max_salary": 180000,
+                "job_salary_currency": "USD",
+                "job_description": "We are seeking a python/pytorch engineer...",
+                "job_highlights": {
+                    "Qualifications": [
+                        "Must have 5+ years with python and pytorch",
+                        "Experience with FastAPI or django",
+                    ]
+                }
+            }
+        ]
+    }
+    mock_response.raise_for_status = mocker.Mock()
+    mocker.patch("requests.get", return_value=mock_response)
+
+    from src.ingestion.fetcher import fetch_from_jsearch
+    jobs = fetch_from_jsearch(num_pages=1)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job["company_name"] == "DeepMind Partner"
+    assert job["title"] == "Senior AI Architect"
+    assert job["source"] == "jsearch"
+    # Verify the tokenized tags
+    assert "python" in job["tags"]
+    assert "pytorch" in job["tags"]
+    assert "fastapi" in job["tags"]
+    assert "django" in job["tags"]
+
+
+def test_fetch_all_sources_incorporates_jsearch(mocker: pytest.MonkeyPatch) -> None:
+    mocker.patch("src.ingestion.fetcher.settings.jsearch_api_key", "mocked-key")
+
+    mock_remotive = [{"url": "http://x.com/r1", "id": 1, "source": "remotive"}]
+    mock_remoteok = [{"url": "http://x.com/ro1", "id": 2, "source": "remoteok"}]
+    mock_arbeitnow = [{"url": "http://x.com/an1", "id": 3, "source": "arbeitnow"}]
+    mock_jsearch = [{"url": "http://x.com/js1", "id": 4, "source": "jsearch"}]
+
+    mocker.patch("src.ingestion.fetcher.fetch_from_remotive_all_categories", return_value=mock_remotive)
+    mocker.patch("src.ingestion.fetcher.fetch_from_remoteok", return_value=mock_remoteok)
+    mocker.patch("src.ingestion.fetcher.fetch_from_arbeitnow", return_value=mock_arbeitnow)
+    mocker.patch("src.ingestion.fetcher.fetch_from_jsearch", return_value=mock_jsearch)
+
+    from src.ingestion.fetcher import fetch_all_sources
+    res = fetch_all_sources()
+    assert len(res) == 4
+    sources = [r.get("source") for r in res]
+    assert "remotive" in sources
+    assert "remoteok" in sources
+    assert "arbeitnow" in sources
+    assert "jsearch" in sources
+
+

@@ -4,7 +4,7 @@ from datetime import date
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from src.serving.api.dependencies import get_db
@@ -17,6 +17,17 @@ from src.serving.api.schemas import (
     SkillTrendResponse,
     StatsResponse,
     TimeTrendResponse,
+    SubscriptionCreate,
+    SubscriptionResponse,
+    UnsubscribeRequest,
+    BookmarkCreate,
+    BookmarkResponse,
+    BookmarkNoteUpdate,
+    SalaryByRoleResponse,
+    SalaryByCountryResponse,
+    AIRecommendRequest,
+    AIRecommendResponse,
+    AlertTriggerResponse,
 )
 from src.serving.api.service import (
     fetch_country_trends,
@@ -25,6 +36,17 @@ from src.serving.api.service import (
     fetch_skill_trends,
     fetch_stats,
     fetch_time_trends,
+    create_or_update_subscription,
+    unsubscribe_email,
+    get_bookmarks,
+    add_bookmark,
+    remove_bookmark,
+    update_bookmark_notes,
+    fetch_salary_by_role,
+    fetch_salary_by_country,
+    fetch_available_salary_currencies,
+    trigger_email_alerts,
+    ai_recommend_jobs,
 )
 
 app = FastAPI(
@@ -45,7 +67,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -56,8 +78,14 @@ async def _global_exception_handler(request, exc: Exception) -> JSONResponse:  #
 
 
 # ---------------------------------------------------------------------------
-# Health
+# Health and Redirects
 # ---------------------------------------------------------------------------
+
+
+@app.get("/", include_in_schema=False)
+def root_redirect() -> RedirectResponse:
+    """Redirect root path to interactive OpenAPI documentation."""
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
@@ -203,3 +231,246 @@ def list_jobs(
         )
         for bronze, silver in jobs_data
     ]
+
+
+# ---------------------------------------------------------------------------
+# Job alert email subscriptions
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/api/v1/subscriptions",
+    response_model=SubscriptionResponse,
+    status_code=201,
+    tags=["subscriptions"],
+    summary="Create or update an email subscription",
+)
+def subscribe(
+    payload: SubscriptionCreate,
+    session: Session = Depends(get_db),
+) -> SubscriptionResponse:
+    """Create a new job-alert subscription or reactivate/update an existing one."""
+    sub = create_or_update_subscription(
+        session, name=payload.name, email=payload.email, skills=payload.skills
+    )
+    return SubscriptionResponse(
+        id=sub.id,
+        name=sub.name,
+        email=sub.email,
+        skills=sub.skills,
+        active=sub.active,
+        created_at=sub.created_at.isoformat(),
+        last_sent_at=sub.last_sent_at.isoformat() if sub.last_sent_at else None,
+    )
+
+
+@app.post(
+    "/api/v1/subscriptions/unsubscribe",
+    tags=["subscriptions"],
+    summary="Unsubscribe an email address",
+)
+def unsubscribe(
+    payload: UnsubscribeRequest,
+    session: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Deactivate subscription for the given email address."""
+    success = unsubscribe_email(session, email=payload.email)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No active subscription found for email: {payload.email}",
+        )
+    return {"message": f"Successfully unsubscribed {payload.email} from job alerts."}
+
+
+# ---------------------------------------------------------------------------
+# Bookmarked Jobs Endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/api/v1/bookmarks",
+    response_model=list[BookmarkResponse],
+    summary="Get all bookmarked jobs",
+)
+def list_bookmarks(session: Session = Depends(get_db)) -> list[BookmarkResponse]:
+    """Retrieve the list of bookmarked jobs, sorted by bookmark date descending."""
+    from src.ingestion.db import BookmarkedJob, BronzeJob
+    results = (
+        session.query(BookmarkedJob, BronzeJob)
+        .outerjoin(BronzeJob, BookmarkedJob.job_id == BronzeJob.id)
+        .order_by(BookmarkedJob.bookmarked_at.desc())
+        .all()
+    )
+    return [
+        BookmarkResponse(
+            id=b.id,
+            job_id=b.job_id,
+            notes=b.notes,
+            bookmarked_at=b.bookmarked_at.isoformat(),
+            title=job.title if job else "Unknown (Deleted)",
+            company_name=job.company_name if job else "Unknown Company",
+            url=job.url if job else None,
+            source=job.source if job else "unknown",
+        )
+        for b, job in results
+    ]
+
+
+@app.post(
+    "/api/v1/bookmarks",
+    response_model=BookmarkResponse,
+    status_code=201,
+    summary="Bookmark a job posting",
+)
+def create_bookmark(
+    payload: BookmarkCreate,
+    session: Session = Depends(get_db),
+) -> BookmarkResponse:
+    """Bookmark a job posting by its ID with optional notes."""
+    b = add_bookmark(session, job_id=payload.job_id, notes=payload.notes)
+    return BookmarkResponse(
+        id=b.id,
+        job_id=b.job_id,
+        notes=b.notes,
+        bookmarked_at=b.bookmarked_at.isoformat(),
+    )
+
+
+@app.delete(
+    "/api/v1/bookmarks/{job_id}",
+    summary="Remove a bookmarked job",
+)
+def delete_bookmark(
+    job_id: int,
+    session: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Remove bookmark for a job by job_id."""
+    success = remove_bookmark(session, job_id=job_id)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Bookmark for job_id {job_id} not found.",
+        )
+    return {"message": f"Bookmark for job_id {job_id} removed successfully."}
+
+
+@app.put(
+    "/api/v1/bookmarks/{job_id}",
+    response_model=BookmarkResponse,
+    summary="Update bookmark notes",
+)
+def update_bookmark(
+    job_id: int,
+    payload: BookmarkNoteUpdate,
+    session: Session = Depends(get_db),
+) -> BookmarkResponse:
+    """Update notes on an existing bookmark."""
+    b = update_bookmark_notes(session, job_id=job_id, notes=payload.notes)
+    if not b:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Bookmark for job_id {job_id} not found.",
+        )
+    return BookmarkResponse(
+        id=b.id,
+        job_id=b.job_id,
+        notes=b.notes,
+        bookmarked_at=b.bookmarked_at.isoformat(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Salary Intelligence Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/api/v1/salary/by-role",
+    response_model=list[SalaryByRoleResponse],
+    tags=["salary"],
+    summary="Average salary stats by role",
+)
+def get_salary_by_role(
+    currency: str = Query(default="USD", description="Currency filter (e.g. USD, EUR)"),
+    limit: int = Query(default=20, ge=1, le=100, description="Max rows to return"),
+    session: Session = Depends(get_db),
+) -> list[SalaryByRoleResponse]:
+    """Retrieve aggregated salary metrics grouped by job role."""
+    rows = fetch_salary_by_role(session, currency=currency, limit=limit)
+    return [SalaryByRoleResponse(**r) for r in rows]
+
+
+@app.get(
+    "/api/v1/salary/by-country",
+    response_model=list[SalaryByCountryResponse],
+    tags=["salary"],
+    summary="Average salary stats by country",
+)
+def get_salary_by_country(
+    currency: str = Query(default="USD", description="Currency filter (e.g. USD, EUR)"),
+    limit: int = Query(default=20, ge=1, le=100, description="Max rows to return"),
+    session: Session = Depends(get_db),
+) -> list[SalaryByCountryResponse]:
+    """Retrieve aggregated salary metrics grouped by country."""
+    rows = fetch_salary_by_country(session, currency=currency, limit=limit)
+    return [SalaryByCountryResponse(**r) for r in rows]
+
+
+@app.get(
+    "/api/v1/salary/currencies",
+    response_model=list[str],
+    tags=["salary"],
+    summary="List available salary currencies",
+)
+def get_salary_currencies(session: Session = Depends(get_db)) -> list[str]:
+    """Retrieve distinct currencies that exist in the salary dataset."""
+    return fetch_available_salary_currencies(session)
+
+
+# ---------------------------------------------------------------------------
+# AI Recommendations Endpoint
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/api/v1/ai/recommend",
+    response_model=AIRecommendResponse,
+    tags=["ai"],
+    summary="AI-powered job recommendations",
+)
+def get_ai_job_recommendations(
+    payload: AIRecommendRequest,
+    session: Session = Depends(get_db),
+) -> AIRecommendResponse:
+    """Analyze a user resume or description and recommend the highest matching jobs."""
+    result = ai_recommend_jobs(session, resume_text=payload.resume_text, top_n=payload.top_n)
+    return AIRecommendResponse(
+        ai_summary=result["ai_summary"],
+        extracted_skills=result["extracted_skills"],
+        recommended_roles=result["recommended_roles"],
+        matched_jobs=[JobSummaryResponse(**j) for j in result["matched_jobs"]],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Email Alert Trigger Endpoint
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/api/v1/subscriptions/trigger",
+    response_model=AlertTriggerResponse,
+    tags=["subscriptions"],
+    summary="Trigger email alerts cycle",
+)
+def trigger_alerts(
+    force: bool = Query(default=True, description="Force alert sending and bypass 23h limit"),
+    session: Session = Depends(get_db),
+) -> AlertTriggerResponse:
+    """Manually dispatch digest email alerts to all active subscribers."""
+    count = trigger_email_alerts(session, force=force)
+    return AlertTriggerResponse(
+        alerts_sent=count,
+        message=f"Dispatched {count} job alerts successfully.",
+    )
+
+
+

@@ -2,15 +2,16 @@ version: "3.9"
 
 # ---------------------------------------------------------------------------
 # CareerLens Docker Compose
-# Services: postgres | pipeline (one-shot) | scheduler | api | dashboard
+# Services: mysql | pipeline (one-shot) | scheduler | api | dashboard
 # ---------------------------------------------------------------------------
 
 x-common-env: &common-env
-  POSTGRES_USER: ${POSTGRES_USER:-postgres}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-  POSTGRES_DB: ${POSTGRES_DB:-careerlens}
-  POSTGRES_HOST: postgres
-  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  MYSQL_USER: ${MYSQL_USER:-root}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD:-nader}
+  MYSQL_DB: ${MYSQL_DB:-careerlens}
+  MYSQL_HOST: mysql
+  MYSQL_PORT: ${MYSQL_PORT:-3306}
+  DATABASE_URL: "mysql+pymysql://${MYSQL_USER:-root}:${MYSQL_PASSWORD:-nader}@mysql:3306/${MYSQL_DB:-careerlens}?charset=utf8mb4"
   PIPELINE_INTERVAL_MINUTES: ${PIPELINE_INTERVAL_MINUTES:-5}
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUNBUFFERED: "1"
@@ -22,30 +23,30 @@ x-app-base: &app-base
   environment:
     <<: *common-env
   depends_on:
-    postgres:
+    mysql:
       condition: service_healthy
   restart: on-failure
 
 services:
 
-  # ── Postgres ───────────────────────────────────────────────────────────────
-  postgres:
-    image: postgres:16-alpine
+  # ── MySQL ──────────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-careerlens}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-nader}
+      MYSQL_DATABASE: ${MYSQL_DB:-careerlens}
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-careerlens}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_PASSWORD:-nader}"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
   # ── One-shot pipeline run (ingestion + transform + backfill) ───────────────
   pipeline:
@@ -108,4 +109,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  mysql_data:

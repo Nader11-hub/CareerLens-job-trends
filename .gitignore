@@ -43,3 +43,8 @@ dbt_modules/
 # Large fallback CSV datasets (use Git LFS or regenerate locally)
 data/fallback/*.csv
 !data/fallback/kaggle_fallback.csv
+
+# Exported CSV/Excel files (generated at runtime — too large for git)
+exports/*.csv
+exports/*.xlsx
+exports/*.json

@@ -88,8 +88,8 @@ def main() -> None:
     parser.add_argument(
         "--source",
         default="all",
-        choices=["remotive", "kaggle", "all"],
-        help="Primary data source: 'remotive', 'kaggle', or 'all' (Remotive+RemoteOK+Arbeitnow). Default: all.",
+        choices=["remotive", "kaggle", "all", "jsearch"],
+        help="Primary data source: 'remotive', 'kaggle', 'all' (all live), or 'jsearch'. Default: all.",
     )
     parser.add_argument(
         "--db-url",
@@ -109,7 +109,27 @@ def main() -> None:
         metavar="MINUTES",
         help="Run on a recurring schedule every N minutes (uses APScheduler).",
     )
+    parser.add_argument(
+        "--send-alerts",
+        action="store_true",
+        help="Manually dispatch email digests for active subscriptions (forces sending).",
+    )
     args = parser.parse_args()
+
+    if args.send_alerts:
+        from src.ingestion.db import get_session, init_db
+        from src.orchestration.email_alerts import send_job_alerts
+        init_db(db_url=args.db_url)
+        session = get_session(db_url=args.db_url)
+        try:
+            sent_count = send_job_alerts(session, force=True)
+            print(json.dumps({"status": "success", "alerts_sent": sent_count}))
+        except Exception as exc:
+            print(json.dumps({"status": "error", "error": str(exc)}))
+            sys.exit(1)
+        finally:
+            session.close()
+        sys.exit(0)
 
     if args.schedule_interval is not None:
         # Delegate to the scheduler module

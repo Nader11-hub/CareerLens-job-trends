@@ -10,6 +10,7 @@ from src.ingestion.fetcher import (
     fetch_all_sources,
     fetch_from_kaggle_fallback,
     fetch_from_remotive_api,
+    fetch_from_jsearch,
 )
 from src.ingestion.models import JobRecord
 from src.logger import logger
@@ -57,6 +58,8 @@ def _resolve_fetcher(source: str) -> tuple[str, Fetcher]:
         return "kaggle", fetch_from_kaggle_fallback
     if source == "all":
         return "all", fetch_all_sources
+    if source == "jsearch":
+        return "jsearch", fetch_from_jsearch
     return "remotive", fetch_from_remotive_api
 
 

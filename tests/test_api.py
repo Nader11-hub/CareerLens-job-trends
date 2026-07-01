@@ -113,3 +113,52 @@ def test_api_health(sqlite_db_url: str) -> None:
         app.dependency_overrides.clear()
 
 
+def test_api_subscribe_and_unsubscribe(sqlite_db_url: str) -> None:
+    """Subscribe and unsubscribe endpoints process registrations correctly."""
+    from src.ingestion.db import init_db
+    init_db(db_url=sqlite_db_url)
+
+    client = _make_client(sqlite_db_url)
+    try:
+        # 1. Subscribe
+        payload = {
+            "name": "Jane Doe",
+            "email": "jane@example.com",
+            "skills": ["python", "docker"],
+        }
+        res = client.post("/api/v1/subscriptions", json=payload)
+        assert res.status_code == 201
+        body = res.json()
+        assert body["name"] == "Jane Doe"
+        assert body["email"] == "jane@example.com"
+        assert body["skills"] == ["python", "docker"]
+        assert body["active"] is True
+        assert body["id"] is not None
+
+        # 2. Resubscribe / update skills
+        payload_update = {
+            "name": "Jane Doe Updated",
+            "email": "jane@example.com",
+            "skills": ["golang"],
+        }
+        res_up = client.post("/api/v1/subscriptions", json=payload_update)
+        assert res_up.status_code == 201
+        body_up = res_up.json()
+        assert body_up["name"] == "Jane Doe Updated"
+        assert body_up["skills"] == ["golang"]
+        assert body_up["id"] == body["id"]
+
+        # 3. Unsubscribe
+        unsub_payload = {"email": "jane@example.com"}
+        res_un = client.post("/api/v1/subscriptions/unsubscribe", json=unsub_payload)
+        assert res_un.status_code == 200
+        assert "Successfully unsubscribed" in res_un.json()["message"]
+
+        # 4. Unsubscribe again (fails with 404 since it's already inactive)
+        res_un_again = client.post("/api/v1/subscriptions/unsubscribe", json=unsub_payload)
+        assert res_un_again.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+

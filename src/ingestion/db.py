@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Integer, String, Text, Float, create_engine
+from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, Integer, String, Text, Float, UniqueConstraint, create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -22,7 +22,7 @@ class BronzeJob(Base):
 
     __tablename__ = "bronze_jobs"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     source: Mapped[str] = mapped_column(String(50), nullable=False, default="remotive")
     url: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
@@ -62,7 +62,7 @@ class SilverJob(Base):
 
     __tablename__ = "silver_jobs"
 
-    job_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     source: Mapped[str] = mapped_column(String(50), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     company_name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -122,6 +122,35 @@ class GoldTimeTrend(Base):
     job_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class EmailSubscription(Base):
+    """User subscriptions for daily job-alert email digests."""
+
+    __tablename__ = "email_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    skills: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BookmarkedJob(Base):
+    """User-bookmarked (starred) job postings saved locally."""
+
+    __tablename__ = "bookmarked_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bookmarked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
 _engines: dict[str, Engine] = {}
 _sessionmakers: dict[str, sessionmaker[Session]] = {}
 
@@ -136,6 +165,13 @@ def _build_engine(url: str) -> Engine:
         )
     if url.startswith("sqlite:///"):
         return create_engine(url, connect_args={"check_same_thread": False}, future=True)
+    if url.startswith("mysql"):
+        return create_engine(
+            url,
+            pool_pre_ping=True,          # Reconnect after dropped connections
+            pool_recycle=3600,            # Recycle connections every hour
+            future=True,
+        )
     return create_engine(url, future=True)
 
 
