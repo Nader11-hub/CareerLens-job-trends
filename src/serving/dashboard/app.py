@@ -1181,33 +1181,33 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
         
     elif "/api/v1/trends/countries" in endpoint_clean:
         if db_exists:
-            df = _query_local_sqlite("SELECT country, job_count FROM gold_country_trends ORDER BY job_count DESC")
+            df = _query_local_sqlite("SELECT country, SUM(job_count) as job_count FROM gold_country_trends GROUP BY country ORDER BY job_count DESC")
             return MockResponse(df.to_dict("records"), 200)
         else:
             df = _get_fallback_silver_df()
-            agg = df.groupby("country")["id"].count().reset_index()
+            agg = df.groupby("country")["job_id"].count().reset_index()
             agg.columns = ["country", "job_count"]
             return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/trends/skills" in endpoint_clean:
         if db_exists:
-            df = _query_local_sqlite("SELECT skill, job_count FROM gold_skill_trends ORDER BY job_count DESC")
+            df = _query_local_sqlite("SELECT skill, SUM(job_count) as job_count FROM gold_skill_trends GROUP BY skill ORDER BY job_count DESC")
             return MockResponse(df.to_dict("records"), 200)
         else:
             df = _get_fallback_silver_df()
             exploded = df.explode("tags")
             exploded = exploded[exploded["tags"].notna() & (exploded["tags"] != "")]
-            agg = exploded.groupby("tags")["id"].count().reset_index()
+            agg = exploded.groupby("tags")["job_id"].count().reset_index()
             agg.columns = ["skill", "job_count"]
             return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/trends/roles" in endpoint_clean:
         if db_exists:
-            df = _query_local_sqlite("SELECT role, job_count FROM gold_role_trends ORDER BY job_count DESC")
+            df = _query_local_sqlite("SELECT role, SUM(job_count) as job_count FROM gold_role_trends GROUP BY role ORDER BY job_count DESC")
             return MockResponse(df.to_dict("records"), 200)
         else:
             df = _get_fallback_silver_df()
-            agg = df.groupby("role")["id"].count().reset_index()
+            agg = df.groupby("role")["job_id"].count().reset_index()
             agg.columns = ["role", "job_count"]
             return MockResponse(agg.to_dict("records"), 200)
         
@@ -1217,7 +1217,7 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
             return MockResponse(df.to_dict("records"), 200)
         else:
             df = _get_fallback_silver_df()
-            agg = df.groupby("published_month")["id"].count().reset_index()
+            agg = df.groupby("published_month")["job_id"].count().reset_index()
             agg.columns = ["published_month", "job_count"]
             return MockResponse(agg.sort_values("published_month").to_dict("records"), 200)
         
@@ -1249,7 +1249,7 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
                 avg_salary=("avg", "mean"),
                 min_salary=("salary_min", "min"),
                 max_salary=("salary_max", "max"),
-                job_count=("id", "count")
+                job_count=("job_id", "count")
             ).reset_index()
             return MockResponse(agg.to_dict("records"), 200)
         
@@ -1278,7 +1278,7 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
                 avg_salary=("avg", "mean"),
                 min_salary=("salary_min", "min"),
                 max_salary=("salary_max", "max"),
-                job_count=("id", "count")
+                job_count=("job_id", "count")
             ).reset_index()
             return MockResponse(agg.to_dict("records"), 200)
         
@@ -1320,10 +1320,10 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
         elif method == "POST":
             job_id = json_data.get("job_id") if json_data else None
             if db_exists:
-                df = _query_local_sqlite("SELECT * FROM silver_jobs WHERE id = ?", (job_id,))
+                df = _query_local_sqlite("SELECT * FROM silver_jobs WHERE job_id = ?", (job_id,))
             else:
                 df = _get_fallback_silver_df()
-                df = df[df["id"] == job_id]
+                df = df[df["job_id"] == job_id]
             if not df.empty:
                 job_dict = df.iloc[0].to_dict()
                 b_item = {
@@ -1332,8 +1332,8 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
                     "title": job_dict["title"],
                     "company_name": job_dict["company_name"],
                     "notes": "",
-                    "source": job_dict["source"],
-                    "url": job_dict["url"],
+                    "source": job_dict.get("source", ""),
+                    "url": job_dict.get("url", ""),
                     "bookmarked_at": datetime.now().isoformat()
                 }
                 st.session_state.bookmarks.append(b_item)
@@ -1378,7 +1378,7 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
             extracted = ["python", "sql"]
             
         if db_exists:
-            like_clauses = " OR ".join(["title LIKE ?" for _ in extracted] + ["description LIKE ?" for _ in extracted])
+            like_clauses = " OR ".join(["title LIKE ?" for _ in extracted] + ["tags LIKE ?" for _ in extracted])
             like_params = [f"%{e}%" for e in extracted] * 2
             df = _query_local_sqlite(f"SELECT * FROM silver_jobs WHERE {like_clauses} LIMIT 50", tuple(like_params))
             if df.empty:
@@ -1387,8 +1387,8 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
             df = _get_fallback_silver_df()
         
         def calc_score(row):
-            title_desc = (str(row["title"]) + " " + str(row.get("description", ""))).lower()
-            matches = [e for e in extracted if e in title_desc]
+            title_tags = (str(row.get("title", "")) + " " + str(row.get("tags", "")) + " " + str(row.get("category", ""))).lower()
+            matches = [e for e in extracted if e in title_tags]
             return int((len(matches) / len(extracted)) * 100)
             
         df["match_score"] = df.apply(calc_score, axis=1)
