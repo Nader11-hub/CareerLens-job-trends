@@ -6,6 +6,8 @@ CareerLens FastAPI to visualise global job market trends.
 
 from __future__ import annotations
 
+import json
+import os
 import sys
 from pathlib import Path
 
@@ -1020,15 +1022,309 @@ _CHART_LAYOUT = dict(
 )
 
 # ---------------------------------------------------------------------------
-# Data fetching — cache TTL reduced to 60s for near-real-time freshness
+# Data fetching & offline simulation fallback
 # ---------------------------------------------------------------------------
 BASE = settings.api_base_url
 
+# Initialize session state for local/offline fallback mode
+if "api_fallback" not in st.session_state:
+    st.session_state.api_fallback = False
+if "bookmarks" not in st.session_state:
+    st.session_state.bookmarks = []
+if "subscriptions" not in st.session_state:
+    st.session_state.subscriptions = []
+
+_FALLBACK_CSV = "data/fallback/kaggle_fallback.csv"
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _get_fallback_silver_df() -> pd.DataFrame:
+    """Load and normalize the local fallback CSV dataset to mimic the Silver schema."""
+    import re
+    if not os.path.exists(_FALLBACK_CSV):
+        return pd.DataFrame()
+    
+    try:
+        df = pd.read_csv(_FALLBACK_CSV)
+    except Exception:
+        return pd.DataFrame()
+    
+    df["id"] = df["id"].fillna(0).astype(int)
+    df["title"] = df["title"].fillna("Unknown Title")
+    df["company_name"] = df["company_name"].fillna("Unknown Company")
+    
+    # Infer country
+    def infer_country(loc):
+        if not loc or pd.isna(loc):
+            return "Global"
+        loc_str = str(loc).strip().lower()
+        if "worldwide" in loc_str or "global" in loc_str or "anywhere" in loc_str:
+            return "Global"
+        if "," in str(loc):
+            return str(loc).split(",")[-1].strip()
+        return str(loc).strip()
+    df["country"] = df["candidate_required_location"].apply(infer_country)
+    
+    # Classify seniority
+    def classify_seniority(title):
+        t = str(title).lower()
+        if "sr" in t or "senior" in t or "lead" in t or "principal" in t or "director" in t:
+            return "Senior"
+        if "jr" in t or "junior" in t or "entry" in t or "associate" in t or "intern" in t:
+            return "Junior"
+        return "Mid"
+    df["seniority"] = df["title"].apply(classify_seniority)
+    
+    # Parse salary
+    def parse_salary(sal):
+        if not sal or pd.isna(sal):
+            return None, None, "USD"
+        sal_str = str(sal).lower()
+        nums = [int(s) for s in re.findall(r'\d+', sal_str.replace(",", ""))]
+        if len(nums) >= 2:
+            return float(nums[0]), float(nums[1]), "USD"
+        elif len(nums) == 1:
+            return float(nums[0]), float(nums[0]), "USD"
+        return None, None, "USD"
+        
+    salaries = df["salary"].apply(parse_salary)
+    df["salary_min"] = [s[0] for s in salaries]
+    df["salary_max"] = [s[1] for s in salaries]
+    df["salary_currency"] = [s[2] for s in salaries]
+    
+    # Published month
+    def get_published_month(d):
+        if not d or pd.isna(d):
+            return "2026-07"
+        try:
+            dt = pd.to_datetime(d)
+            return dt.strftime("%Y-%m")
+        except Exception:
+            return "2026-07"
+            
+    df["published_month"] = df["publication_date"].apply(get_published_month)
+    df["source"] = "kaggle"
+    
+    # Extract tags
+    def get_tags(t):
+        if not t or pd.isna(t):
+            return []
+        try:
+            if str(t).startswith("["):
+                import ast
+                return ast.literal_eval(str(t))
+            return [s.strip().lower() for s in str(t).split(",") if s.strip()]
+        except Exception:
+            return [s.strip().lower() for s in str(t).split(",") if s.strip()]
+            
+    df["tags"] = df["tags"].apply(get_tags)
+    df["role"] = df["title"]
+    
+    return df
+
+class MockResponse:
+    def __init__(self, json_data, status_code):
+        self._json_data = json_data
+        self.status_code = status_code
+        self.text = json.dumps(json_data) if json_data else ""
+        
+    def json(self):
+        return self._json_data
+        
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise Exception(f"HTTP Error: {self.status_code}")
+
+def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, params: dict | None = None):
+    """Simulates API responses locally using the fallback CSV and session state."""
+    import re
+    from datetime import datetime
+    endpoint_clean = endpoint.split("?")[0]
+    
+    if "/api/v1/stats" in endpoint_clean:
+        df = _get_fallback_silver_df()
+        return MockResponse({
+            "total_jobs": len(df),
+            "last_updated": "2026-07-02 18:45:00",
+            "earliest_job": "2025-12-12",
+            "latest_job": "2026-07-02",
+            "sources": ["kaggle"],
+            "total_dead_letters": 0
+        }, 200)
+        
+    elif "/api/v1/trends/countries" in endpoint_clean:
+        df = _get_fallback_silver_df()
+        agg = df.groupby("country")["id"].count().reset_index()
+        agg.columns = ["country", "job_count"]
+        return MockResponse(agg.to_dict("records"), 200)
+        
+    elif "/api/v1/trends/skills" in endpoint_clean:
+        df = _get_fallback_silver_df()
+        exploded = df.explode("tags")
+        exploded = exploded[exploded["tags"].notna() & (exploded["tags"] != "")]
+        agg = exploded.groupby("tags")["id"].count().reset_index()
+        agg.columns = ["skill", "job_count"]
+        return MockResponse(agg.to_dict("records"), 200)
+        
+    elif "/api/v1/trends/roles" in endpoint_clean:
+        df = _get_fallback_silver_df()
+        agg = df.groupby("role")["id"].count().reset_index()
+        agg.columns = ["role", "job_count"]
+        return MockResponse(agg.to_dict("records"), 200)
+        
+    elif "/api/v1/trends/time" in endpoint_clean:
+        df = _get_fallback_silver_df()
+        agg = df.groupby("published_month")["id"].count().reset_index()
+        agg.columns = ["published_month", "job_count"]
+        return MockResponse(agg.sort_values("published_month").to_dict("records"), 200)
+        
+    elif "/api/v1/salary/currencies" in endpoint_clean:
+        return MockResponse(["USD", "EUR", "GBP"], 200)
+        
+    elif "/api/v1/salary/by-role" in endpoint_clean:
+        df = _get_fallback_silver_df()
+        valid_sal = df[df["salary_min"].notna() & df["salary_max"].notna()].copy()
+        if valid_sal.empty:
+            return MockResponse([], 200)
+        valid_sal["avg"] = (valid_sal["salary_min"] + valid_sal["salary_max"]) / 2
+        agg = valid_sal.groupby("role").agg(
+            avg_salary=("avg", "mean"),
+            min_salary=("salary_min", "min"),
+            max_salary=("salary_max", "max"),
+            job_count=("id", "count")
+        ).reset_index()
+        return MockResponse(agg.to_dict("records"), 200)
+        
+    elif "/api/v1/salary/by-country" in endpoint_clean:
+        df = _get_fallback_silver_df()
+        valid_sal = df[df["salary_min"].notna() & df["salary_max"].notna()].copy()
+        if valid_sal.empty:
+            return MockResponse([], 200)
+        valid_sal["avg"] = (valid_sal["salary_min"] + valid_sal["salary_max"]) / 2
+        agg = valid_sal.groupby("country").agg(
+            avg_salary=("avg", "mean"),
+            min_salary=("salary_min", "min"),
+            max_salary=("salary_max", "max"),
+            job_count=("id", "count")
+        ).reset_index()
+        return MockResponse(agg.to_dict("records"), 200)
+        
+    elif "/api/v1/jobs" in endpoint_clean:
+        df = _get_fallback_silver_df()
+        if params:
+            if params.get("source") and params["source"] != "All":
+                df = df[df["source"] == params["source"].lower()]
+            if params.get("seniority") and params["seniority"] != "All":
+                df = df[df["seniority"] == params["seniority"]]
+            if params.get("min_salary") and float(params["min_salary"]) > 0:
+                df = df[(df["salary_min"] >= float(params["min_salary"])) | (df["salary_max"] >= float(params["min_salary"]))]
+        return MockResponse(df.to_dict("records"), 200)
+        
+    elif "/api/v1/bookmarks" in endpoint_clean:
+        if method == "GET":
+            return MockResponse(st.session_state.bookmarks, 200)
+        elif method == "POST":
+            job_id = json_data.get("job_id") if json_data else None
+            df = _get_fallback_silver_df()
+            job_row = df[df["id"] == job_id]
+            if not job_row.empty:
+                job_dict = job_row.iloc[0].to_dict()
+                b_item = {
+                    "id": len(st.session_state.bookmarks) + 1,
+                    "job_id": job_id,
+                    "title": job_dict["title"],
+                    "company_name": job_dict["company_name"],
+                    "notes": "",
+                    "source": job_dict["source"],
+                    "url": job_dict["url"],
+                    "bookmarked_at": datetime.now().isoformat()
+                }
+                st.session_state.bookmarks.append(b_item)
+                return MockResponse(b_item, 201)
+            return MockResponse({"detail": "Job not found"}, 404)
+        elif method == "PUT":
+            b_id = int(endpoint_clean.split("/")[-1])
+            for b in st.session_state.bookmarks:
+                if b["id"] == b_id or b["job_id"] == b_id:
+                    b["notes"] = json_data.get("notes", "") if json_data else ""
+                    return MockResponse(b, 200)
+            return MockResponse({"detail": "Bookmark not found"}, 404)
+        elif method == "DELETE":
+            b_id = int(endpoint_clean.split("/")[-1])
+            st.session_state.bookmarks = [b for b in st.session_state.bookmarks if b["id"] != b_id and b["job_id"] != b_id]
+            return MockResponse({"message": "Deleted"}, 200)
+            
+    elif "/api/v1/subscriptions" in endpoint_clean:
+        if "unsubscribe" in endpoint_clean:
+            email = json_data.get("email") if json_data else ""
+            st.session_state.subscriptions = [s for s in st.session_state.subscriptions if s["email"] != email]
+            return MockResponse({"message": "Unsubscribed"}, 200)
+        elif "trigger" in endpoint_clean:
+            return MockResponse({"message": "Alerts cycle triggered successfully (simulated)"}, 200)
+        else:
+            sub = {
+                "name": json_data.get("name"),
+                "email": json_data.get("email"),
+                "skills": json_data.get("skills", [])
+            }
+            st.session_state.subscriptions.append(sub)
+            return MockResponse(sub, 201)
+            
+    elif "/api/v1/ai/recommend" in endpoint_clean:
+        resume_text = json_data.get("resume_text", "")
+        techs = ["python", "sql", "aws", "docker", "kubernetes", "fastapi", "react", "golang", "machine learning", "dbt", "spark", "airflow", "pandas", "numpy", "java", "javascript", "html", "css", "linux", "git", "github"]
+        extracted = []
+        for t in techs:
+            if re.search(r'\b' + re.escape(t) + r'\b', resume_text.lower()):
+                extracted.append(t)
+        if not extracted:
+            extracted = ["python", "sql"]
+            
+        df = _get_fallback_silver_df()
+        
+        def calc_score(row):
+            job_tags = set([t.lower() for t in (row.get("tags") or [])] + re.findall(r"\b[a-zA-Z0-9+#\-\.]+\b", row["title"].lower()))
+            matches = set(extracted).intersection(job_tags)
+            if not matches:
+                return 0
+            return int((len(matches) / len(extracted)) * 100)
+            
+        df["match_score"] = df.apply(calc_score, axis=1)
+        recommended = df[df["match_score"] > 0].sort_values("match_score", ascending=False).head(10)
+        
+        rec_list = []
+        for _, r in recommended.iterrows():
+            rec_list.append(r.to_dict())
+            
+        return MockResponse({
+            "ai_summary": f"Based on your profile, you exhibit solid expertise in: {', '.join(extracted).upper()}. We recommend targeting remote jobs matching these keywords.",
+            "extracted_skills": extracted,
+            "recommended_roles": ["Developer", "Data Analyst"],
+            "recommendations": rec_list
+        }, 200)
+        
+    return MockResponse({}, 404)
+
+# Save the original requests module to avoid infinite recursion when proxying
+_real_requests = requests
+
+def _api_request(method: str, url: str, json_data: dict | None = None, params: dict | None = None, timeout: int = 15):
+    """Executes a network request to the API backend, falling back to local simulation on connection failure."""
+    endpoint = url.replace(BASE, "")
+    
+    if st.session_state.api_fallback:
+        return _simulate_api(method, endpoint, json_data, params)
+        
+    try:
+        r = _real_requests.request(method, url, json=json_data, params=params, timeout=timeout)
+        return r
+    except (_real_requests.exceptions.ConnectionError, _real_requests.exceptions.Timeout):
+        st.session_state.api_fallback = True
+        return _simulate_api(method, endpoint, json_data, params)
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _fetch(endpoint: str, params: dict | None = None) -> pd.DataFrame:
     """Fetch JSON data from the CareerLens API and return as a DataFrame."""
-    r = requests.get(f"{BASE}{endpoint}", params=params or {}, timeout=15)
+    r = _api_request("GET", f"{BASE}{endpoint}", params=params)
     r.raise_for_status()
     data = r.json()
     return pd.DataFrame(data) if data else pd.DataFrame()
@@ -1036,9 +1332,30 @@ def _fetch(endpoint: str, params: dict | None = None) -> pd.DataFrame:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _fetch_stats() -> dict:
-    r = requests.get(f"{BASE}/api/v1/stats", timeout=15)
+    r = _api_request("GET", f"{BASE}/api/v1/stats")
     r.raise_for_status()
     return r.json()
+
+# Monkey patch requests internally for this module to route through _api_request
+class CustomRequestsProxy:
+    def get(self, url, params=None, **kwargs):
+        return _api_request("GET", url, params=params, **kwargs)
+    def post(self, url, json=None, params=None, **kwargs):
+        return _api_request("POST", url, json_data=json, params=params, **kwargs)
+    def put(self, url, json=None, params=None, **kwargs):
+        return _api_request("PUT", url, json_data=json, params=params, **kwargs)
+    def delete(self, url, **kwargs):
+        return _api_request("DELETE", url, **kwargs)
+    def request(self, method, url, **kwargs):
+        return _api_request(method, url, **kwargs)
+    
+    @property
+    def exceptions(self):
+        return _real_requests.exceptions
+        
+    RequestException = _real_requests.RequestException
+
+requests = CustomRequestsProxy()
 
 
 def _safe_fetch(endpoint: str, params: dict | None = None) -> pd.DataFrame:
@@ -1238,8 +1555,19 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    if st.session_state.api_fallback:
+        st.markdown(
+            """
+            <div style="background-color: rgba(245, 158, 11, 0.1); color: #FBBF24; font-size: 0.72rem; padding: 10px; border-radius: 8px; border: 1px solid rgba(245, 158, 11, 0.2); text-align: center; font-weight: 600; margin-bottom: 12px; margin-top: 12px;">
+                🔌 Offline Fallback Mode<br>
+                <span style="font-size: 0.65rem; opacity: 0.8; font-weight: 400;">Serving pre-loaded Kaggle dataset</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
     st.markdown(
-        "<br><div style='color:#475569;font-size:0.7rem;text-align:center'>"
+        "<div style='color:var(--color-text-muted);font-size:0.7rem;text-align:center;margin-top:12px;'>"
         "Powered by Remotive API · Built with FastAPI + Streamlit"
         "</div>",
         unsafe_allow_html=True,
