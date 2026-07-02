@@ -1203,34 +1203,34 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
         
     elif "/api/v1/trends/countries" in endpoint_clean:
         if db_exists:
-            df = _query_local_sqlite("SELECT country, SUM(job_count) as job_count FROM gold_country_trends GROUP BY country ORDER BY job_count DESC")
+            df = _query_local_sqlite("SELECT country, published_month, job_count FROM gold_country_trends ORDER BY job_count DESC")
             return MockResponse(df.to_dict("records"), 200)
         else:
             df = _get_fallback_silver_df()
-            agg = df.groupby("country")["job_id"].count().reset_index()
-            agg.columns = ["country", "job_count"]
+            agg = df.groupby(["country", "published_month"])["job_id"].count().reset_index()
+            agg.columns = ["country", "published_month", "job_count"]
             return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/trends/skills" in endpoint_clean:
         if db_exists:
-            df = _query_local_sqlite("SELECT skill, SUM(job_count) as job_count FROM gold_skill_trends GROUP BY skill ORDER BY job_count DESC")
+            df = _query_local_sqlite("SELECT skill, published_month, job_count FROM gold_skill_trends ORDER BY job_count DESC")
             return MockResponse(df.to_dict("records"), 200)
         else:
             df = _get_fallback_silver_df()
             exploded = df.explode("tags")
             exploded = exploded[exploded["tags"].notna() & (exploded["tags"] != "")]
-            agg = exploded.groupby("tags")["job_id"].count().reset_index()
-            agg.columns = ["skill", "job_count"]
+            agg = exploded.groupby(["tags", "published_month"])["job_id"].count().reset_index()
+            agg.columns = ["skill", "published_month", "job_count"]
             return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/trends/roles" in endpoint_clean:
         if db_exists:
-            df = _query_local_sqlite("SELECT role, SUM(job_count) as job_count FROM gold_role_trends GROUP BY role ORDER BY job_count DESC")
+            df = _query_local_sqlite("SELECT role, published_month, job_count FROM gold_role_trends ORDER BY job_count DESC")
             return MockResponse(df.to_dict("records"), 200)
         else:
             df = _get_fallback_silver_df()
-            agg = df.groupby("role")["job_id"].count().reset_index()
-            agg.columns = ["role", "job_count"]
+            agg = df.groupby(["role", "published_month"])["job_id"].count().reset_index()
+            agg.columns = ["role", "published_month", "job_count"]
             return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/trends/time" in endpoint_clean:
@@ -1320,7 +1320,10 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
                     query_params.append(float(params["min_salary"]))
                     query_params.append(float(params["min_salary"]))
                     
-            sql = f"SELECT * FROM silver_jobs WHERE {' AND '.join(where_clauses)} LIMIT 100"
+            sql = f"""SELECT job_id AS id, source, title, company_name, category, role,
+                      country, tags, publication_date, published_month, salary_min, salary_max,
+                      salary_currency, seniority, '' AS url, '' AS description
+                      FROM silver_jobs WHERE {' AND '.join(where_clauses)} LIMIT 100"""
             df = _query_local_sqlite(sql, tuple(query_params))
             if "tags" in df.columns:
                 df["tags"] = df["tags"].apply(parse_tags)
@@ -1334,6 +1337,10 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
                     df = df[df["seniority"] == params["seniority"]]
                 if params.get("min_salary") and float(params["min_salary"]) > 0:
                     df = df[(df["salary_min"] >= float(params["min_salary"])) | (df["salary_max"] >= float(params["min_salary"]))]
+            if "job_id" in df.columns and "id" not in df.columns:
+                df = df.rename(columns={"job_id": "id"})
+            if "url" not in df.columns:
+                df["url"] = ""
             return MockResponse(df.to_dict("records"), 200)
         
     elif "/api/v1/bookmarks" in endpoint_clean:
@@ -1543,7 +1550,7 @@ def get_mock_email_html(name: str, skills: list[str], jobs_df: pd.DataFrame) -> 
             job_cards_html += f"""
             <div class="job-card">
                 <div class="job-title-row">
-                    <a href="{job['url']}" class="job-title" target="_blank">{job['title']}</a>
+                    <a href="{job.get('url', '#')}" class="job-title" target="_blank">{job.get('title','Unknown')}</a>
                     <div>
                         {sen_badge}
                         {src_badge}
@@ -2634,22 +2641,13 @@ elif page == "🗂️ Browse Jobs":
             display_df = display_df[mask]
 
         st.caption(f"Showing **{len(display_df)}** records")
+        # Only show columns that actually exist in the dataframe
+        desired_cols = ["id", "title", "company_name", "country", "seniority",
+                        "salary_min", "salary_max", "salary_currency",
+                        "source", "publication_date", "url"]
+        show_cols = [c for c in desired_cols if c in display_df.columns]
         st.dataframe(
-            display_df[
-                [
-                    "id",
-                    "title",
-                    "company_name",
-                    "country",
-                    "seniority",
-                    "salary_min",
-                    "salary_max",
-                    "salary_currency",
-                    "source",
-                    "publication_date",
-                    "url",
-                ]
-            ],
+            display_df[show_cols],
             column_config={
                 "id": st.column_config.NumberColumn("Job ID", format="%d"),
                 "url": st.column_config.LinkColumn("Job Link", help="Click to open the job posting"),
@@ -2772,8 +2770,8 @@ elif page == "🔍 Data Quality":
                     loc_fill_rate,
                     tags_fill_rate,
                     (dq_df["company_name"].notna().sum() / total_analyzed) * 100,
-                    (dq_df["url"].notna().sum() / total_analyzed) * 100,
-                    (dq_df["category"].apply(lambda x: str(x).strip().lower() not in ["none", "nan", "unknown", ""]).sum() / total_analyzed) * 100
+                    (dq_df["url"].notna().sum() / total_analyzed) * 100 if "url" in dq_df.columns else 0,
+                    (dq_df["category"].apply(lambda x: str(x).strip().lower() not in ["none", "nan", "unknown", ""]).sum() / total_analyzed) * 100 if "category" in dq_df.columns else 0
                 ]
             }
             null_df = pd.DataFrame(nullability_data)
