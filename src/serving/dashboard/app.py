@@ -1121,6 +1121,20 @@ def _get_fallback_silver_df() -> pd.DataFrame:
     
     return df
 
+class MockResponse:
+    """Mimics a requests.Response object for offline API simulation."""
+    def __init__(self, json_data, status_code: int = 200):
+        self._json_data = json_data
+        self.status_code = status_code
+        self.text = json.dumps(json_data) if json_data is not None else ""
+
+    def json(self):
+        return self._json_data
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise Exception(f"HTTP Error: {self.status_code}")
+
 def _query_local_sqlite(query: str, params: tuple = ()) -> pd.DataFrame:
     """Helper to query the local SQLite database file directly when backend is down."""
     import sqlite3
