@@ -22,6 +22,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
 from src.config import settings
 
@@ -36,136 +37,987 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# Custom CSS — dark premium look
+# Custom CSS — Gradient Mesh Dark Premium Look
 # ---------------------------------------------------------------------------
 st.markdown(
     """
     <style>
-    /* ---- Global ---- */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    /* ================================================================
+       CAREERLENS — BOLD GRADIENT DESIGN SYSTEM v5  (MESH DARK EDITION)
+       Page: Animated Gradient Mesh (#12101C base + indigo/violet/teal/pink blobs)
+       Cards: Glassmorphic white surfaces floating above the mesh
+       Primary Accent Duo: Indigo to Violet (#4F46E5 → #7C3AED)
+       Secondary Accent Duo: Blue to Teal (#2563EB → #06B6D4)
+    ================================================================ */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&display=swap');
 
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-    /* ---- Background ---- */
-    .stApp { background: #0e1117; }
-
-    /* ---- Sidebar ---- */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
-        border-right: 1px solid #21262d;
+    :root {
+        --color-bg:           #12101C;
+        --color-surface:      rgba(21, 18, 31, 0.90);
+        --color-surface-glass: rgba(21, 18, 31, 0.70);
+        --color-border:       rgba(139, 92, 246, 0.22);
+        --color-border-muted: rgba(139, 92, 246, 0.12);
+        --color-accent:       #4F46E5;
+        --color-accent-hover: #4338CA;
+        --color-accent-soft:  rgba(139, 92, 246, 0.12);
+        --color-text-primary:   #F8FAFC;
+        --color-text-secondary: #CBD5E1;
+        --color-text-muted:     #94A3B8;
+        --color-success-bg:   rgba(16, 185, 129, 0.08);
+        --color-success-text: #10B981;
+        --color-success-border: rgba(16, 185, 129, 0.18);
+        --color-warn-bg:   rgba(245, 158, 11, 0.08);
+        --color-warn-text: #F59E0B;
+        --color-warn-border: rgba(245, 158, 11, 0.18);
+        --radius-sm:  6px;
+        --radius-md:  10px;
+        --radius-lg:  14px;
+        --gradient-primary:   linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+        --gradient-secondary: linear-gradient(135deg, #2563EB 0%, #06B6D4 100%);
+        --shadow-card: 0 4px 24px rgba(18, 16, 28, 0.30), 0 1px 4px rgba(79, 70, 229, 0.10);
+        --shadow-card-hover: 0 12px 40px rgba(18, 16, 28, 0.45), 0 4px 16px rgba(99, 102, 241, 0.22);
+        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+        --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    section[data-testid="stSidebar"] h1,
-    section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3 { color: #e6edf3; }
 
-    /* ---- KPI Cards ---- */
+    /* ── Gradient Mesh Blob Animation ───────────────────────────────── */
+    @keyframes meshBlob1 {
+        0%   { background-position: 15% 20%, 85% 75%, 72% 12%, 8% 82%; }
+        33%  { background-position: 18% 25%, 80% 70%, 78% 18%, 5% 85%; }
+        66%  { background-position: 12% 15%, 88% 78%, 68% 10%, 12% 80%; }
+        100% { background-position: 15% 20%, 85% 75%, 72% 12%, 8% 82%; }
+    }
+
+    /* ── Page Background — Animated Gradient Mesh ───────────────────── */
+    .stApp {
+        background-color: #12101C !important;
+        background-image:
+            radial-gradient(ellipse 700px 600px at 15% 20%, rgba(99, 102, 241, 0.52) 0%, transparent 60%),
+            radial-gradient(ellipse 800px 650px at 85% 75%, rgba(6, 182, 212, 0.46) 0%, transparent 60%),
+            radial-gradient(ellipse 500px 500px at 72% 12%, rgba(217, 70, 239, 0.30) 0%, transparent 55%),
+            radial-gradient(ellipse 620px 550px at 8% 82%,  rgba(30, 58, 138, 0.40) 0%, transparent 60%) !important;
+        background-size: 200% 200% !important;
+        background-attachment: fixed !important;
+        animation: meshBlob1 28s ease-in-out infinite alternate !important;
+    }
+    /* ── Blanket Transparent Reset (Nuclear Option) ─────────────────── */
+    .stApp, .stApp * {
+        background-color: transparent !important;
+    }
+
+    /* ── Selectively Re-Apply Backgrounds with Higher Specificity ─── */
+    .stApp {
+        background-color: #12101C !important;
+    }
+    .stApp section[data-testid="stSidebar"] {
+        background-color: #15121F !important;
+    }
+    .stApp .kpi-card,
+    .stApp .stMetric,
+    .stApp div[data-testid="stPlotlyChart"],
+    .stApp .premium-card,
+    .stApp .status-toolbar,
+    .stApp .top-navbar,
+    .stApp .page-header-area,
+    .stApp div[data-testid="stDataFrame"],
+    .stApp div[data-testid="stDataframe"],
+    .stApp div[data-testid="stTabs"],
+    .stApp div[data-testid="stExpander"],
+    .stApp div[data-testid="stToast"] {
+        background-color: var(--color-surface-glass) !important;
+        border-color: var(--color-border) !important;
+    }
+    .stApp div[data-testid="stAlert"] {
+        background-color: var(--color-surface-glass) !important;
+        border-color: var(--color-border) !important;
+    }
+    .stApp div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    .stApp div[data-testid="stNumberInput"] div[data-baseweb="input"],
+    .stApp .stTextInput input,
+    .stApp .stTextArea textarea,
+    .stApp div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
+    .stApp div[data-testid="stFileUploader"] {
+        background-color: #1F1A2D !important;
+        color: #FFFFFF !important;
+        border-color: var(--color-border) !important;
+    }
+    .stApp section[data-testid="stSidebar"] div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    .stApp section[data-testid="stSidebar"] div[data-testid="stNumberInput"] div[data-baseweb="input"] {
+        background-color: #221E2F !important;
+    }
+    .stApp section[data-testid="stSidebar"] button {
+        background-color: #2D283E !important;
+    }
+
+    /* ── Noise grain overlay for premium texture ─────────────────────── */
+    .stApp::before {
+        content: "" !important;
+        position: fixed !important;
+        inset: 0 !important;
+        pointer-events: none !important;
+        z-index: 0 !important;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E") !important;
+        opacity: 0.04 !important;
+    }
+
+    /* ── Dark vignette at viewport edges ───────────────────────────── */
+    .stApp::after {
+        content: "" !important;
+        position: fixed !important;
+        inset: 0 !important;
+        pointer-events: none !important;
+        z-index: 0 !important;
+        background: radial-gradient(ellipse 120% 120% at 50% 50%, transparent 55%, rgba(5, 4, 12, 0.65) 100%) !important;
+    }
+
+    /* ── Global Typography & Reset ──────────────────────────────────── */
+    html, body, [class*="css"] {
+        font-family: var(--font-sans) !important;
+        -webkit-font-smoothing: antialiased !important;
+    }
+    .main .block-container {
+        padding-top: 0 !important;
+        padding-bottom: 40px !important;
+        max-width: 1200px !important;
+        position: relative !important;
+        z-index: 1 !important;
+    }
+    .main [data-testid="stMarkdownContainer"] p,
+    .main p {
+        color: var(--color-text-secondary) !important;
+        font-size: 0.92rem !important;
+        line-height: 1.62 !important;
+    }
+    h1, h2, h3, h4 {
+        color: var(--color-text-primary) !important;
+        letter-spacing: -0.02em !important;
+    }
+
+    /* ── Top Navbar ──────────────────────────────────────────────────── */
+    .top-navbar {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 14px 20px 14px 20px !important;
+        margin-bottom: 0px !important;
+        position: relative !important;
+        border-bottom: none !important;
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(24px) !important;
+        -webkit-backdrop-filter: blur(24px) !important;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+        border: 1px solid var(--color-border) !important;
+        border-bottom: none !important;
+    }
+    .top-navbar::after {
+        content: "" !important;
+        position: absolute !important;
+        bottom: 0 !important;
+        left: 20px !important;
+        right: 20px !important;
+        height: 2px !important;
+        background: var(--gradient-primary) !important;
+    }
+    .nav-brand {
+        display: flex !important;
+        align-items: center !important;
+        gap: 12px !important;
+    }
+    .nav-logo-wrap {
+        background: var(--gradient-primary) !important;
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 8px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
+    }
+    .nav-logo-wrap svg {
+        color: #ffffff !important;
+        stroke: #ffffff !important;
+    }
+    .nav-title {
+        font-size: 1.05rem !important;
+        font-weight: 800 !important;
+        color: var(--color-text-primary) !important;
+        letter-spacing: -0.02em !important;
+    }
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+    .nav-badge {
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        background: rgba(79, 70, 229, 0.12) !important;
+        color: #4F46E5 !important;
+        border: 1px solid rgba(79, 70, 229, 0.28) !important;
+        border-radius: 20px !important;
+        padding: 4px 12px !important;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.12) !important;
+    }
+
+    /* ── Page Header Area ───────────────────────────────────────────── */
+    .page-header-area {
+        padding: 20px 20px 24px 20px !important;
+        margin-bottom: 20px !important;
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(24px) !important;
+        -webkit-backdrop-filter: blur(24px) !important;
+        border-radius: 0 0 var(--radius-lg) var(--radius-lg) !important;
+        border: 1px solid var(--color-border) !important;
+        border-top: none !important;
+        box-shadow: var(--shadow-card) !important;
+    }
+    .header-icon-badge {
+        background: var(--gradient-primary) !important;
+        width: 42px !important;
+        height: 42px !important;
+        border-radius: 10px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-size: 1.4rem !important;
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.2) !important;
+        flex-shrink: 0 !important;
+    }
+    .page-title {
+        font-size: 2.1rem !important;
+        font-weight: 800 !important;
+        color: var(--color-text-primary) !important;
+        letter-spacing: -0.04em !important;
+        line-height: 1.2 !important;
+    }
+    .title-link-icon {
+        opacity: 0.5;
+        transition: var(--transition);
+        margin-left: 8px;
+        display: inline-flex;
+        align-items: center;
+    }
+    .title-link-icon:hover {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    .page-subtitle {
+        font-size: 0.92rem !important;
+        font-weight: 400 !important;
+        color: var(--color-text-secondary) !important;
+        line-height: 1.62 !important;
+    }
+
+    /* ── Status Toolbar (Health / Dead Letter) ──────────────────────── */
+    .status-toolbar {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 1px solid var(--color-border) !important;
+        border-left: 4px solid #4F46E5 !important;
+        border-radius: var(--radius-md) !important;
+        padding: 12px 20px !important;
+        margin-bottom: 24px !important;
+        box-shadow: var(--shadow-card) !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 20px !important;
+        flex-wrap: wrap !important;
+    }
+    .source-pill {
+        background: rgba(79, 70, 229, 0.05) !important;
+        color: #4F46E5 !important;
+        border: 1px solid rgba(79, 70, 229, 0.15) !important;
+        padding: 3px 12px !important;
+        border-radius: 20px !important;
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        margin-right: 6px;
+        font-family: var(--font-mono) !important;
+        transition: var(--transition) !important;
+    }
+    .source-pill:hover {
+        background: var(--gradient-primary) !important;
+        color: #ffffff !important;
+        border-color: transparent !important;
+        box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+    }
+
+    /* ── Metric / KPI Cards ────────────────────────────────────────── */
     .kpi-card {
-        background: linear-gradient(135deg, #161b22 0%, #1c2128 100%);
-        border: 1px solid #30363d;
-        border-radius: 12px;
-        padding: 20px 24px;
-        text-align: center;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-        transition: transform 0.2s, box-shadow 0.2s;
+        position: relative !important;
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(22px) !important;
+        -webkit-backdrop-filter: blur(22px) !important;
+        border: 1px solid var(--color-border) !important;
+        border-radius: var(--radius-lg) !important;
+        padding: 20px 20px 18px 20px !important;
+        box-shadow: var(--shadow-card) !important;
+        transition: var(--transition) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 12px !important;
+        min-height: 110px !important;
+        overflow: hidden !important;
     }
+    .kpi-card::before {
+        content: "" !important;
+        position: absolute !important;
+        top: -30px !important;
+        right: -30px !important;
+        width: 90px !important;
+        height: 90px !important;
+        border-radius: 50% !important;
+        filter: blur(28px) !important;
+        opacity: 0.18 !important;
+        pointer-events: none !important;
+        transition: var(--transition) !important;
+    }
+    .gradient-primary-theme::before { background: var(--gradient-primary) !important; }
+    .gradient-secondary-theme::before { background: var(--gradient-secondary) !important; }
+
     .kpi-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 32px rgba(88,166,255,0.15);
+        transform: translateY(-3px) !important;
     }
-    .kpi-number {
-        font-size: 2.4rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #58a6ff, #a5d6ff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        line-height: 1.1;
+    .gradient-primary-theme:hover {
+        border-color: rgba(124, 58, 237, 0.55) !important;
+        box-shadow: var(--shadow-card-hover) !important;
+    }
+    .gradient-secondary-theme:hover {
+        border-color: rgba(6, 182, 212, 0.55) !important;
+        box-shadow: 0 12px 40px rgba(18, 16, 28, 0.45), 0 4px 16px rgba(6, 182, 212, 0.22) !important;
+    }
+
+    .kpi-header-row {
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+    }
+    .kpi-icon-badge-wrap {
+        width: 34px !important;
+        height: 34px !important;
+        border-radius: 8px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex-shrink: 0 !important;
+        color: #ffffff !important;
+    }
+    .kpi-icon-badge-wrap svg {
+        width: 15px !important;
+        height: 15px !important;
+        stroke: #ffffff !important;
+        fill: none !important;
+    }
+    .gradient-primary-theme .kpi-icon-badge-wrap {
+        background: var(--gradient-primary) !important;
+        box-shadow: 0 3px 8px rgba(79, 70, 229, 0.25) !important;
+    }
+    .gradient-secondary-theme .kpi-icon-badge-wrap {
+        background: var(--gradient-secondary) !important;
+        box-shadow: 0 3px 8px rgba(37, 99, 235, 0.25) !important;
     }
     .kpi-label {
-        font-size: 0.78rem;
-        font-weight: 500;
-        color: #8b949e;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-top: 6px;
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        color: var(--color-text-secondary) !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.06em !important;
+        line-height: 1.2 !important;
+    }
+    .kpi-number {
+        font-size: 2rem !important;
+        font-weight: 850 !important;
+        letter-spacing: -0.04em !important;
+        line-height: 1 !important;
+        font-variant-numeric: tabular-nums !important;
+        font-family: var(--font-sans) !important;
+        padding-left: 2px !important;
+        background-clip: text !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        display: inline-block !important;
+    }
+    .gradient-primary-theme .kpi-number {
+        background-image: linear-gradient(135deg, #FFFFFF 30%, #8B5CF6 100%) !important;
+    }
+    .gradient-secondary-theme .kpi-number {
+        background-image: linear-gradient(135deg, #FFFFFF 30%, #06B6D4 100%) !important;
     }
 
-    /* ---- Section headers ---- */
+    /* ── Section Headers ────────────────────────────────────────────── */
     .section-header {
-        font-size: 1.05rem;
-        font-weight: 600;
-        color: #58a6ff;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        margin-bottom: 4px;
-        border-left: 3px solid #58a6ff;
-        padding-left: 10px;
+        font-size: 0.75rem !important;
+        font-weight: 700 !important;
+        color: var(--color-text-muted) !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.08em !important;
+        margin-bottom: 16px !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+    }
+    .section-header::before {
+        content: "" !important;
+        display: inline-block !important;
+        width: 4px !important;
+        height: 14px !important;
+        border-radius: 2px !important;
+        background: var(--gradient-primary) !important;
     }
 
-    /* ---- Chart containers ---- */
-    .chart-card {
-        background: #161b22;
-        border: 1px solid #21262d;
-        border-radius: 12px;
-        padding: 16px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    /* ── Plotly Chart Wrapper Card ──────────────────────────────────── */
+    div[data-testid="stPlotlyChart"] {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(22px) !important;
+        -webkit-backdrop-filter: blur(22px) !important;
+        border: 1px solid var(--color-border) !important;
+        border-radius: var(--radius-lg) !important;
+        padding: 16px !important;
+        box-shadow: var(--shadow-card) !important;
+        transition: var(--transition) !important;
+    }
+    div[data-testid="stPlotlyChart"]:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: var(--shadow-card-hover) !important;
+        border-color: rgba(124, 58, 237, 0.45) !important;
+    }
+    /* ── Sidebar Background & Layout ────────────────────────────────── */
+    section[data-testid="stSidebar"] {
+        background-color: #15121F !important;
+        background-image: none !important;
+        border-right: 1px solid rgba(139, 92, 246, 0.15) !important;
+        box-shadow: 4px 0 32px rgba(5, 4, 12, 0.35) !important;
+    }
+    section[data-testid="stSidebar"] hr {
+        border-color: rgba(255, 255, 255, 0.10) !important;
+    }
+    .sidebar-logo-text {
+        font-size: 1.5rem !important;
+        font-weight: 900 !important;
+        background: var(--gradient-primary) !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        letter-spacing: -0.04em !important;
+        margin-bottom: 4px !important;
+        display: inline-block !important;
     }
 
-    /* ---- Tables ---- */
-    .dataframe { border-radius: 8px; overflow: hidden; }
+    /* ── Sidebar Typography & Reset ─────────────────────────────────── */
+    section[data-testid="stSidebar"] h3,
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 {
+        font-size: 0.82rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.08em !important;
+        color: #F8FAFC !important;
+        margin-top: 14px !important;
+        margin-bottom: 8px !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] span {
+        color: #CBD5E1 !important;
+    }
+    section[data-testid="stSidebar"] .last-updated {
+        font-size: 0.72rem !important;
+        color: #94A3B8 !important;
+    }
 
-    /* ---- Divider ---- */
-    hr { border-color: #21262d; margin: 32px 0; }
+    /* ── Navigation Radio Items ─────────────────────────────────────── */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radiogroup"] > div {
+        background: transparent !important;
+        border-left: 4px solid transparent !important;
+        transition: var(--transition) !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radiogroup"] > div[data-checked="true"] {
+        background: linear-gradient(135deg, rgba(79, 70, 229, 0.22) 0%, rgba(124, 58, 237, 0.22) 100%) !important;
+        border-left: 4px solid #4F46E5 !important;
+        box-shadow: inset 0 0 1px rgba(79, 70, 229, 0.3), 0 2px 8px rgba(5, 4, 12, 0.2) !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radiogroup"] > div label p {
+        color: #94A3B8 !important;
+        font-weight: 500 !important;
+        transition: var(--transition) !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radiogroup"] > div[data-checked="true"] label p {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        text-shadow: 0 0 12px rgba(139, 92, 246, 0.4) !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radiogroup"] > div:hover label p {
+        color: #F8FAFC !important;
+    }
 
-    /* ---- Status pills ---- */
+    /* ── Radio circles/checkmarks ───────────────────────────────────── */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radio"] > div:first-child {
+        border-color: rgba(255, 255, 255, 0.28) !important;
+        background-color: transparent !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] [role="radio"][aria-checked="true"] > div:first-child {
+        border-color: #4F46E5 !important;
+        background-color: #4F46E5 !important;
+        box-shadow: 0 0 8px rgba(79, 70, 229, 0.5) !important;
+    }
+
+    /* ── Selectboxes & Number Inputs in Sidebar ────────────────────── */
+    section[data-testid="stSidebar"] div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    section[data-testid="stSidebar"] div[data-testid="stNumberInput"] div[data-baseweb="input"] {
+        background-color: #221E2F !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        color: #FFFFFF !important;
+        border-radius: var(--radius-sm) !important;
+        transition: var(--transition) !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+    section[data-testid="stSidebar"] div[data-testid="stNumberInput"] div[data-baseweb="input"]:hover {
+        border-color: rgba(139, 92, 246, 0.45) !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within,
+    section[data-testid="stSidebar"] div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within {
+        border-color: #4F46E5 !important;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.25) !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stSelectbox"] [role="button"],
+    section[data-testid="stSidebar"] div[data-testid="stSelectbox"] span,
+    section[data-testid="stSidebar"] div[data-testid="stSelectbox"] div,
+    section[data-testid="stSidebar"] div[data-testid="stNumberInput"] input {
+        color: #FFFFFF !important;
+    }
+
+    /* ── Number Input Increment/Decrement Buttons ──────────────────── */
+    section[data-testid="stSidebar"] div[data-testid="stNumberInput"] button {
+        background-color: #2D283E !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-left: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+        transition: var(--transition) !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stNumberInput"] button:hover {
+        background-color: #4F46E5 !important;
+        color: #FFFFFF !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stNumberInput"] svg {
+        fill: #FFFFFF !important;
+        stroke: #FFFFFF !important;
+    }
+
+    /* ── Sliders in Sidebar ────────────────────────────────────────── */
+    section[data-testid="stSidebar"] div[data-testid="stSlider"] div[data-baseweb="slider"] > div:first-child {
+        background: #374151 !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stSlider"] [data-testid="stWidgetLabel"] p,
+    section[data-testid="stSidebar"] div[data-testid="stSlider"] div {
+        color: #F1F5F9 !important;
+    }
+
+    /* ── Toggle switches in Sidebar ─────────────────────────────────── */
+    section[data-testid="stSidebar"] div[data-testid="stCheckbox"] label p {
+        color: #F1F5F9 !important;
+    }
+    section[data-testid="stSidebar"] button[role="switch"] {
+        background-color: #374151 !important;
+    }
+    section[data-testid="stSidebar"] button[role="switch"][aria-checked="true"] {
+        background: var(--gradient-primary) !important;
+    }
+
+    /* Slider track & thumb */
+    div[data-testid="stSlider"] div[data-baseweb="slider"] > div:first-child {
+        background: #E5E7EB !important;
+        height: 6px !important;
+        border-radius: 3px !important;
+    }
+    div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div[data-testid="stSliderThumb"] {
+        background: var(--gradient-primary) !important;
+        height: 6px !important;
+    }
+    div[data-testid="stSlider"] [role="slider"] {
+        background-color: #ffffff !important;
+        border: 3px solid #4F46E5 !important;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4) !important;
+        width: 18px !important;
+        height: 18px !important;
+        transition: var(--transition) !important;
+    }
+    div[data-testid="stSlider"] [role="slider"]:hover {
+        transform: scale(1.1) !important;
+        box-shadow: 0 0 12px rgba(79, 70, 229, 0.6) !important;
+    }
+
+    /* Selectbox / Number Inputs */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stNumberInput"] div[data-baseweb="input"] {
+        background-color: #1F1A2D !important;
+        border-radius: var(--radius-sm) !important;
+        border: 1px solid var(--color-border) !important;
+        color: var(--color-text-primary) !important;
+        transition: var(--transition) !important;
+    }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+    div[data-testid="stNumberInput"] div[data-baseweb="input"]:hover {
+        border-color: #9CA3AF !important;
+    }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within,
+    div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within {
+        border-color: var(--color-accent) !important;
+        box-shadow: 0 0 0 3px var(--color-accent-soft) !important;
+    }
+
+    /* Toggle switches */
+    div[data-testid="stCheckbox"] button[role="switch"][aria-checked="true"] {
+        background: var(--gradient-primary) !important;
+    }
+
+    /* ── Native Streamlit Widgets (Metric etc.) ────────────────────── */
+    .stMetric {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(22px) !important;
+        -webkit-backdrop-filter: blur(22px) !important;
+        border-radius: var(--radius-lg) !important;
+        border: 1px solid var(--color-border) !important;
+        box-shadow: var(--shadow-card) !important;
+    }
+
+    /* ── Premium Job Cards ──────────────────────────────────────────── */
+    .premium-card {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 1px solid var(--color-border) !important;
+        border-radius: var(--radius-lg) !important;
+        padding: 20px 24px !important;
+        margin-bottom: 12px !important;
+        box-shadow: var(--shadow-card) !important;
+        transition: var(--transition) !important;
+    }
+    .premium-card:hover {
+        box-shadow: var(--shadow-card-hover) !important;
+        border-color: rgba(124, 58, 237, 0.45) !important;
+        transform: translateY(-3px) !important;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────────── */
+    .stButton > button {
+        background: var(--gradient-primary) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: var(--radius-sm) !important;
+        font-weight: 700 !important;
+        padding: 8px 20px !important;
+        transition: var(--transition) !important;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3) !important;
+    }
+    .stButton > button:hover {
+        box-shadow: 0 4px 12px rgba(79,70,229,0.25) !important;
+    }
+
+    /* ── Text inputs ────────────────────────────────────────────────── */
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        border-radius: var(--radius-sm) !important;
+        border: 1px solid var(--color-border) !important;
+        font-size: 0.875rem !important;
+        color: var(--color-text-primary) !important;
+        background: #1F1A2D !important;
+        transition: var(--transition) !important;
+    }
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: var(--color-accent) !important;
+        box-shadow: 0 0 0 3px var(--color-accent-soft) !important;
+    }
+
+    /* ── Native Streamlit metric widget ─────────────────────────────── */
+    .stMetric {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(22px) !important;
+        -webkit-backdrop-filter: blur(22px) !important;
+        border-radius: var(--radius-lg) !important;
+        padding: 16px 20px !important;
+        border: 1px solid var(--color-border) !important;
+        box-shadow: var(--shadow-card) !important;
+    }
+
+    /* ── Sidebar footer/brand text ──────────────────────────────────── */
+    .sidebar-footer {
+        font-size: 0.72rem !important;
+        color: var(--color-text-muted) !important;
+        text-align: center !important;
+        padding: 16px 0 8px 0 !important;
+        border-top: 1px solid rgba(0,0,0,0.10) !important;
+    }
+
+    /* ── Dataframe / Table containers ───────────────────────────────── */
+    div[data-testid="stDataFrame"],
+    div[data-testid="stDataframe"] {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 1px solid var(--color-border) !important;
+        border-radius: var(--radius-lg) !important;
+        box-shadow: var(--shadow-card) !important;
+        overflow: hidden !important;
+    }
+
+    /* ── Tabs bar & panels ──────────────────────────────────────────── */
+    div[data-testid="stTabs"] {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(22px) !important;
+        -webkit-backdrop-filter: blur(22px) !important;
+        border: 1px solid var(--color-border) !important;
+        border-radius: var(--radius-lg) !important;
+        box-shadow: var(--shadow-card) !important;
+        padding: 4px 4px 16px 4px !important;
+    }
+    div[data-testid="stTabs"] button[role="tab"] {
+        color: var(--color-text-secondary) !important;
+        font-weight: 600 !important;
+        font-size: 0.875rem !important;
+    }
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+        color: #4F46E5 !important;
+        border-bottom: 2px solid #4F46E5 !important;
+    }
+
+    /* ── Expanders ──────────────────────────────────────────────────── */
+    div[data-testid="stExpander"] {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 1px solid var(--color-border) !important;
+        border-radius: var(--radius-lg) !important;
+        box-shadow: var(--shadow-card) !important;
+        margin-bottom: 8px !important;
+    }
+    div[data-testid="stExpander"] summary {
+        color: var(--color-text-primary) !important;
+        font-weight: 600 !important;
+    }
+
+    /* ── Alert boxes (info/warning/error/success) ───────────────────── */
+    div[data-testid="stAlert"],
+    div[class*="stNotification"] {
+        border-radius: var(--radius-md) !important;
+        backdrop-filter: blur(16px) !important;
+        -webkit-backdrop-filter: blur(16px) !important;
+        box-shadow: 0 2px 12px rgba(18, 16, 28, 0.15) !important;
+    }
+
+    /* ── st.info box ─────────────────────────────────────────────── */
+    div[data-testid="stAlert"][data-baseweb="notification"] {
+        background: var(--color-surface-glass) !important;
+        border-left: 4px solid #3b82f6 !important;
+        border-color: var(--color-border) !important;
+    }
+
+    /* ── Horizontal divider ─────────────────────────────────────────── */
+    hr {
+        border: none !important;
+        height: 1px !important;
+        background: linear-gradient(90deg, transparent, rgba(79,70,229,0.25), transparent) !important;
+        margin: 20px 0 !important;
+    }
+
+    /* ── st.subheader / h2 / h3 bare on mesh ───────────────────────── */
+    .main h2, .main h3, .main h4, .main h5, .main h6 {
+        color: var(--color-text-primary) !important;
+    }
+
+    /* ── st.caption ─────────────────────────────────────────────────── */
+    div[data-testid="stCaptionContainer"] p {
+        color: var(--color-text-muted) !important;
+    }
+
+    /* ── Global text visibility — all native Streamlit widgets ──────── */
+    /* Force all text in the app to light colors so nothing is invisible */
+    .stApp p,
+    .stApp span:not([style*="background"]):not(.nav-badge):not(.pill-ok):not(.pill-warn):not(.source-pill),
+    .stApp label,
+    .stApp [data-testid="stWidgetLabel"] p,
+    .stApp [data-testid="stWidgetLabel"] span,
+    .stApp [data-testid="stMarkdownContainer"] p,
+    .stApp [data-testid="stMarkdownContainer"] li,
+    .stApp [data-testid="stMarkdownContainer"] h1,
+    .stApp [data-testid="stMarkdownContainer"] h2,
+    .stApp [data-testid="stMarkdownContainer"] h3,
+    .stApp [data-testid="stMarkdownContainer"] h4,
+    .stApp div[data-testid="stSelectbox"] label,
+    .stApp div[data-testid="stMultiSelect"] label,
+    .stApp div[data-testid="stTextInput"] label,
+    .stApp div[data-testid="stTextArea"] label,
+    .stApp div[data-testid="stNumberInput"] label,
+    .stApp div[data-testid="stSlider"] label,
+    .stApp div[data-testid="stRadio"] label,
+    .stApp div[data-testid="stCheckbox"] label,
+    .stApp div[data-testid="stFileUploader"] label,
+    .stApp div[role="radiogroup"] label,
+    .stApp div[data-testid="stRadio"] div[data-testid="stMarkdownContainer"] p {
+        color: var(--color-text-secondary) !important;
+    }
+
+    /* Headings always full bright white */
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6 {
+        color: var(--color-text-primary) !important;
+    }
+
+    /* Dataframe / table cells and headers */
+    .stApp [data-testid="stDataFrame"] td,
+    .stApp [data-testid="stDataFrame"] th,
+    .stApp [data-testid="stDataframe"] td,
+    .stApp [data-testid="stDataframe"] th {
+        color: var(--color-text-secondary) !important;
+    }
+
+    /* Tab labels */
+    .stApp div[data-testid="stTabs"] button[role="tab"] {
+        color: var(--color-text-secondary) !important;
+    }
+    .stApp div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+        color: #818CF8 !important;
+        border-bottom-color: #818CF8 !important;
+    }
+
+    /* Expander summary */
+    .stApp div[data-testid="stExpander"] summary,
+    .stApp div[data-testid="stExpander"] summary span {
+        color: var(--color-text-primary) !important;
+    }
+
+    /* Selectbox & multiselect option text */
+    .stApp [data-baseweb="select"] [data-baseweb="tag"] span {
+        color: var(--color-text-primary) !important;
+    }
+
+    /* ── Download buttons ───────────────────────────────────────────── */
+    div[data-testid="stDownloadButton"] > button {
+        background: var(--gradient-secondary) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: var(--radius-sm) !important;
+        font-weight: 700 !important;
+        padding: 8px 20px !important;
+        transition: var(--transition) !important;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3) !important;
+    }
+    div[data-testid="stDownloadButton"] > button:hover {
+        box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35) !important;
+    }
+
+    /* ── File uploader ──────────────────────────────────────────────── */
+    div[data-testid="stFileUploader"] {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 2px dashed var(--color-border) !important;
+        border-radius: var(--radius-lg) !important;
+        padding: 8px !important;
+    }
+
+    /* ── Multiselect ────────────────────────────────────────────────── */
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+        background-color: #1F1A2D !important;
+        border: 1px solid var(--color-border) !important;
+        border-radius: var(--radius-sm) !important;
+    }
+
+    /* ── Spinner overlay ────────────────────────────────────────────── */
+    div[data-testid="stSpinner"] {
+        color: #4F46E5 !important;
+    }
+
+    /* ── Toast notifications ────────────────────────────────────────── */
+    div[data-testid="stToast"] {
+        background: var(--color-surface-glass) !important;
+        backdrop-filter: blur(20px) !important;
+        border: 1px solid rgba(255,255,255,0.70) !important;
+        box-shadow: var(--shadow-card-hover) !important;
+        border-radius: var(--radius-md) !important;
+        color: var(--color-text-primary) !important;
+    }
+
+    /* ── Progress bar ───────────────────────────────────────────────── */
+    div[data-testid="stProgress"] > div {
+        background: #E5E7EB !important;
+        border-radius: 4px !important;
+    }
+    div[data-testid="stProgress"] > div > div {
+        background: var(--gradient-primary) !important;
+        border-radius: 4px !important;
+    }
+
+    /* ── Columns gap visual fix on mesh ─────────────────────────────── */
+    div[data-testid="column"] {
+        position: relative !important;
+    }
+
+    /* ── Last-updated caption in sidebar ────────────────────────────── */
+    .last-updated {
+        font-size: 0.72rem !important;
+        color: var(--color-text-muted) !important;
+        padding: 4px 0 !important;
+    }
+
+    /* ── pill-ok / pill-warn (status toolbar) ───────────────────────── */
     .pill-ok {
-        display: inline-block;
-        background: #1a4731;
-        color: #3fb950;
-        border-radius: 20px;
-        padding: 2px 10px;
-        font-size: 0.75rem;
-        font-weight: 600;
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        background: rgba(5,150,105,0.10) !important;
+        color: #059669 !important;
+        border: 1px solid rgba(5,150,105,0.22) !important;
+        border-radius: 20px !important;
+        padding: 2px 10px !important;
     }
     .pill-warn {
-        display: inline-block;
-        background: #3d2b00;
-        color: #f0883e;
-        border-radius: 20px;
-        padding: 2px 10px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-
-    /* ---- Last updated timestamp ---- */
-    .last-updated {
-        font-size: 0.72rem;
-        color: #3fb950;
-        background: #1a4731;
-        border-radius: 8px;
-        padding: 4px 10px;
-        display: inline-block;
-        margin-top: 4px;
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        background: rgba(217,119,6,0.10) !important;
+        color: #D97706 !important;
+        border: 1px solid rgba(217,119,6,0.22) !important;
+        border-radius: 20px !important;
+        padding: 2px 10px !important;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+
 # ---------------------------------------------------------------------------
-# Plotly theme
+# Plotly theme & brand colors — design system palette
 # ---------------------------------------------------------------------------
-_PLOTLY_THEME = "plotly_dark"
-_BRAND_COLORS = px.colors.sequential.Blues_r
-_ACCENT = "#58a6ff"
+_PLOTLY_THEME = "simple_white"
+_BRAND_COLORS = ["#4F46E5", "#0D9488", "#8B5CF6", "#10B981", "#F59E0B", "#EC4899"]
+_ACCENT = "#4F46E5"
 
 _CHART_LAYOUT = dict(
-    paper_bgcolor="#161b22",
-    plot_bgcolor="#161b22",
-    font=dict(family="Inter, sans-serif", size=12, color="#c9d1d9"),
-    margin=dict(l=16, r=16, t=40, b=16),
-    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#30363d", borderwidth=1),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="Inter, -apple-system, sans-serif", size=11, color="#94A3B8"),
+    margin=dict(l=8, r=8, t=32, b=8),
+    xaxis=dict(
+        gridcolor="rgba(255, 255, 255, 0.08)",
+        linecolor="rgba(255, 255, 255, 0.15)",
+        tickfont=dict(color="#94A3B8", size=11),
+        showgrid=True,
+    ),
+    yaxis=dict(
+        gridcolor="rgba(255, 255, 255, 0.08)",
+        linecolor="rgba(255, 255, 255, 0.15)",
+        tickfont=dict(color="#CBD5E1", size=11),
+        showgrid=False,
+    ),
+    legend=dict(
+        bgcolor="rgba(21, 18, 31, 0.9)",
+        bordercolor="rgba(139, 92, 246, 0.2)",
+        borderwidth=1,
+        font=dict(color="#F8FAFC", size=11),
+    ),
+    hoverlabel=dict(
+        bgcolor="#221E2F",
+        bordercolor="rgba(139, 92, 246, 0.3)",
+        font=dict(family="Inter, sans-serif", size=12, color="#FFFFFF"),
+    ),
 )
-
 
 # ---------------------------------------------------------------------------
 # Data fetching — cache TTL reduced to 60s for near-real-time freshness
@@ -346,9 +1198,8 @@ def to_excel_data(df: pd.DataFrame) -> bytes:
 # Sidebar
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("## 🌐 CareerLens")
-    st.markdown("*Global Job Market Intelligence*")
-    st.divider()
+    st.markdown('<div class="sidebar-logo-text">🌐 CareerLens</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500; margin-top: -6px; margin-bottom: 12px;">Global Job Market Intelligence</div>', unsafe_allow_html=True)
 
     st.markdown("### 🔧 Filters")
     top_n = st.slider("Top N results", min_value=5, max_value=50, value=15, step=5)
@@ -361,6 +1212,7 @@ with st.sidebar:
         "View",
         options=[
             "📊 Overview",
+            "🔍 Data Quality",
             "🌍 Countries",
             "🛠️ Skills",
             "💼 Roles",
@@ -387,7 +1239,7 @@ with st.sidebar:
     )
 
     st.markdown(
-        "<br><div style='color:#8b949e;font-size:0.7rem;text-align:center'>"
+        "<br><div style='color:#475569;font-size:0.7rem;text-align:center'>"
         "Powered by Remotive API · Built with FastAPI + Streamlit"
         "</div>",
         unsafe_allow_html=True,
@@ -410,8 +1262,14 @@ except requests.RequestException as exc:
 # ---------------------------------------------------------------------------
 
 
-def _apply_layout(fig: go.Figure) -> go.Figure:
-    fig.update_layout(**_CHART_LAYOUT)
+def _apply_layout(fig: go.Figure, **kwargs) -> go.Figure:
+    layout = dict(_CHART_LAYOUT)
+    for key, val in kwargs.items():
+        if key in layout and isinstance(layout[key], dict) and isinstance(val, dict):
+            layout[key] = {**layout[key], **val}
+        else:
+            layout[key] = val
+    fig.update_layout(**layout)
     return fig
 
 
@@ -419,12 +1277,91 @@ def _empty_chart(title: str) -> None:
     st.info(f"No data available for **{title}**. Run the pipeline to ingest some jobs.")
 
 
-def _kpi(col, number: str | int, label: str) -> None:
+_ICON_JOBS = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>"""
+_ICON_COUNTRIES = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>"""
+_ICON_SKILLS = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>"""
+_ICON_EARLIEST = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>"""
+_ICON_LATEST = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><path d="M12 14l2 2 4-4"></path></svg>"""
+
+def _top_navbar(title: str = "CareerLens") -> None:
+    st.markdown(
+        f'<div class="top-navbar">'
+        f'  <div class="nav-brand">'
+        f'    <div class="nav-logo-wrap">'
+        f'      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>'
+        f'    </div>'
+        f'    <span class="nav-title">{title}</span>'
+        f'  </div>'
+        f'  <div class="nav-actions">'
+        f'    <span class="nav-badge">SaaS Analytics v2.0</span>'
+        f'  </div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+def _render_header(page_title: str, subtitle: str = "") -> None:
+    _top_navbar()
+    import re
+    emoji = ""
+    text = page_title
+    match = re.match(r"^([\u2600-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])\s*(.*)$", page_title)
+    if match:
+        emoji = match.group(1)
+        text = match.group(2)
+    
+    badge_html = f'<div class="header-icon-badge">{emoji if emoji else "✨"}</div>'
+
+    st.markdown(
+        f'<div class="page-header-area">'
+        f'  <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 8px;">'
+        f'    {badge_html}'
+        f'    <h1 class="page-title" style="margin: 0 !important; padding: 0 !important; display: inline-block;">{text}</h1>'
+        f'    <span class="title-link-icon">'
+        f'      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4F46E5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>'
+        f'    </span>'
+        f'  </div>'
+        f'  {f"<p class=\'page-subtitle\'>{subtitle}</p>" if subtitle else ""}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+def _kpi(col, number: str | int, label: str, icon_svg: str = "", badge_bg: str = "#EEF2F6", icon_color: str = "#4B5563") -> None:
+    is_real_svg = icon_svg and icon_svg.strip().startswith("<svg")
+    lbl_lower = label.lower()
+    
+    if is_real_svg:
+        svg_content = icon_svg
+    elif "job" in lbl_lower:
+        svg_content = _ICON_JOBS
+    elif "countr" in lbl_lower:
+        svg_content = _ICON_COUNTRIES
+    elif "skill" in lbl_lower:
+        svg_content = _ICON_SKILLS
+    elif "earliest" in lbl_lower:
+        svg_content = _ICON_EARLIEST
+    elif "latest" in lbl_lower:
+        svg_content = _ICON_LATEST
+    elif "salary" in lbl_lower or "pay" in lbl_lower:
+        svg_content = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>"""
+    elif "peak" in lbl_lower or "month" in lbl_lower or "trend" in lbl_lower:
+        svg_content = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>"""
+    else:
+        svg_content = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>"""
+
+    gradient_class = "gradient-primary-theme"
+    if any(k in lbl_lower for k in ["countr", "latest", "peak", "average", "fill", "salary", "pay"]):
+        gradient_class = "gradient-secondary-theme"
+        
+    badge_html = f'<div class="kpi-icon-badge-wrap">{svg_content}</div>'
+
     col.markdown(
-        f'<div class="kpi-card">'
-        f'<div class="kpi-number">{number}</div>'
-        f'<div class="kpi-label">{label}</div>'
-        f"</div>",
+        f'<div class="kpi-card {gradient_class}">'
+        f'  <div class="kpi-header-row">'
+        f'    {badge_html}'
+        f'    <div class="kpi-label">{label}</div>'
+        f'  </div>'
+        f'  <div class="kpi-number">{number}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
@@ -435,42 +1372,50 @@ def _kpi(col, number: str | int, label: str) -> None:
 
 # ---- Overview ----------------------------------------------------------------
 if page == "📊 Overview":
-    st.markdown("# 📊 CareerLens Overview")
-    st.markdown(
-        "Near-real-time snapshot of the global remote job market. "
-        "Pipeline runs every 5 minutes; dashboard cache refreshes every 60 seconds."
+    _render_header(
+        "📊 CareerLens Overview",
+        "Near-real-time snapshot of the global remote job market. Pipeline runs every 5 minutes; dashboard cache refreshes every 60 seconds."
     )
-    st.divider()
 
     # Lazily fetch only the data required for Overview page
     countries_df = _safe_fetch("/api/v1/trends/countries")
     skills_df = _safe_fetch("/api/v1/trends/skills")
 
-    # KPI row
+    # Pipeline health — inline status toolbar
+    dead = stats.get("total_dead_letters", 0)
+    sources = stats.get("sources", [])
+    pill_class = "pill-ok" if dead == 0 else "pill-warn"
+    status_text = "Clean" if dead == 0 else f"{dead} unresolved"
+    source_pills_html = "".join(
+        f'<span class="source-pill">{s}</span>'
+        for s in sources
+    )
+    st.markdown(
+        f'<div class="status-toolbar">'
+        f'  <div style="display:flex;align-items:center;gap:8px;">'
+        f'    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>'
+        f'    <span style="font-size:0.82rem;font-weight:600;color:#334155;">Dead-letter queue</span>'
+        f'    <span class="{pill_class}">{status_text}</span>'
+        f'  </div>'
+        f'  <div style="width:1px;height:16px;background:#e5e7eb;"></div>'
+        f'  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+        f'    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4F46E5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>'
+        f'    <span style="font-size:0.82rem;font-weight:600;color:#334155;">Active Sources</span>'
+        f'    {source_pills_html}'
+        f'  </div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+    # KPI row — icon badge variant
     c1, c2, c3, c4, c5 = st.columns(5)
-    _kpi(c1, f"{stats.get('total_jobs', 0):,}", "Total Jobs")
-    _kpi(c2, f"{stats.get('total_countries', 0):,}", "Countries")
-    _kpi(c3, f"{stats.get('total_skills', 0):,}", "Skills")
-    _kpi(c4, stats.get("earliest_job", "—") or "—", "Earliest Job")
-    _kpi(c5, stats.get("latest_job", "—") or "—", "Latest Job")
+    _kpi(c1, f"{stats.get('total_jobs', 0):,}", "Total Jobs", _ICON_JOBS, "rgba(79,70,229,0.08)", "#4F46E5")
+    _kpi(c2, f"{stats.get('total_countries', 0):,}", "Countries", _ICON_COUNTRIES, "rgba(16,185,129,0.08)", "#10B981")
+    _kpi(c3, f"{stats.get('total_skills', 0):,}", "Skills", _ICON_SKILLS, "rgba(139,92,246,0.08)", "#8B5CF6")
+    _kpi(c4, stats.get("earliest_job", "—") or "—", "Earliest Job", _ICON_EARLIEST, "rgba(245,158,11,0.08)", "#F59E0B")
+    _kpi(c5, stats.get("latest_job", "—") or "—", "Latest Job", _ICON_LATEST, "rgba(236,72,153,0.08)", "#EC4899")
 
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # Pipeline health
-    dead = stats.get("total_dead_letters", 0)
-    sources = ", ".join(stats.get("sources", []))
-    col_h1, col_h2 = st.columns(2)
-    with col_h1:
-        pill = "pill-ok" if dead == 0 else "pill-warn"
-        label = "Clean" if dead == 0 else f"{dead} unresolved"
-        st.markdown(
-            f"**Dead-letter queue:** <span class='{pill}'>{label}</span>",
-            unsafe_allow_html=True,
-        )
-    with col_h2:
-        st.markdown(f"**Active sources:** `{sources}`")
-
-    st.divider()
 
     # Quick charts: top countries + top skills side by side
     left, right = st.columns(2)
@@ -478,19 +1423,33 @@ if page == "📊 Overview":
         st.markdown('<div class="section-header">Top Countries</div>', unsafe_allow_html=True)
         if not countries_df.empty:
             top_c = countries_df.groupby("country")["job_count"].sum().nlargest(top_n).reset_index()
+            top_c = top_c.sort_values("job_count", ascending=False)
+            n = len(top_c)
+            indigo_scale = ["#4F46E5", "#7C3AED"]
             fig = px.bar(
                 top_c,
                 x="job_count",
                 y="country",
                 orientation="h",
                 color="job_count",
-                color_continuous_scale="Blues",
+                color_continuous_scale=indigo_scale,
                 template=_PLOTLY_THEME,
-                labels={"job_count": "Jobs", "country": ""},
+                labels={"job_count": "", "country": ""},
+                text="job_count",
+            )
+            fig.update_traces(
+                texttemplate="%{text:,}",
+                textposition="outside",
+                textfont=dict(size=11, color="#FFFFFF", family="Inter, sans-serif"),
+                marker_line_width=0,
             )
             fig.update_coloraxes(showscale=False)
-            fig.update_layout(**_CHART_LAYOUT, yaxis={"categoryorder": "total ascending"})
-            st.plotly_chart(fig, use_container_width=True)
+            _apply_layout(fig,
+                yaxis={"categoryorder": "total ascending", "showgrid": False},
+                xaxis={"showgrid": False, "showticklabels": False, "zeroline": False},
+                margin=dict(l=8, r=64, t=24, b=8),
+            )
+            st.plotly_chart(fig, theme=None, use_container_width=True)
         else:
             _empty_chart("Countries")
 
@@ -498,26 +1457,41 @@ if page == "📊 Overview":
         st.markdown('<div class="section-header">Top Skills</div>', unsafe_allow_html=True)
         if not skills_df.empty:
             top_s = skills_df.groupby("skill")["job_count"].sum().nlargest(top_n).reset_index()
+            top_s = top_s.sort_values("job_count", ascending=False)
+            teal_scale = ["#2563EB", "#06B6D4"]
             fig = px.bar(
                 top_s,
                 x="job_count",
                 y="skill",
                 orientation="h",
                 color="job_count",
-                color_continuous_scale="Teal",
+                color_continuous_scale=teal_scale,
                 template=_PLOTLY_THEME,
-                labels={"job_count": "Jobs", "skill": ""},
+                labels={"job_count": "", "skill": ""},
+                text="job_count",
+            )
+            fig.update_traces(
+                texttemplate="%{text:,}",
+                textposition="outside",
+                textfont=dict(size=11, color="#FFFFFF", family="Inter, sans-serif"),
+                marker_line_width=0,
             )
             fig.update_coloraxes(showscale=False)
-            fig.update_layout(**_CHART_LAYOUT, yaxis={"categoryorder": "total ascending"})
-            st.plotly_chart(fig, use_container_width=True)
+            _apply_layout(fig,
+                yaxis={"categoryorder": "total ascending", "showgrid": False},
+                xaxis={"showgrid": False, "showticklabels": False, "zeroline": False},
+                margin=dict(l=8, r=64, t=24, b=8),
+            )
+            st.plotly_chart(fig, theme=None, use_container_width=True)
         else:
             _empty_chart("Skills")
 
 # ---- Countries ---------------------------------------------------------------
 elif page == "🌍 Countries":
-    st.markdown("# 🌍 Job Market by Country")
-    st.divider()
+    _render_header(
+        "🌍 Countries",
+        "Regional breakdown of remote job postings across the global market."
+    )
 
     # Lazily fetch only the data required for Countries page
     countries_df = _safe_fetch("/api/v1/trends/countries")
@@ -542,8 +1516,8 @@ elif page == "🌍 Countries":
             labels={"job_count": "Total Jobs"},
             title=f"Top {len(agg)} Remote Jobs by Country",
         )
-        fig_map.update_layout(**_CHART_LAYOUT, geo=dict(bgcolor="#161b22", showframe=False))
-        st.plotly_chart(fig_map, use_container_width=True)
+        _apply_layout(fig_map, geo=dict(bgcolor="rgba(0,0,0,0)", showframe=False))
+        st.plotly_chart(fig_map, theme=None, use_container_width=True)
 
         st.divider()
 
@@ -567,8 +1541,8 @@ elif page == "🌍 Countries":
                 labels={"job_count": "Jobs", "published_month": "Month", "country": "Country"},
                 color_discrete_sequence=px.colors.qualitative.Bold,
             )
-            fig.update_layout(**_CHART_LAYOUT)
-            st.plotly_chart(fig, use_container_width=True)
+            _apply_layout(fig, xaxis=dict(showgrid=False), yaxis=dict(showgrid=True))
+            st.plotly_chart(fig, theme=None, use_container_width=True)
 
         # Country ranking table
         st.markdown('<div class="section-header">Country Rankings</div>', unsafe_allow_html=True)
@@ -584,8 +1558,10 @@ elif page == "🌍 Countries":
 
 # ---- Skills ------------------------------------------------------------------
 elif page == "🛠️ Skills":
-    st.markdown("# 🛠️ In-Demand Skills")
-    st.divider()
+    _render_header(
+        "🛠️ Skills",
+        "Technology skill demand trends extracted from live remote job postings."
+    )
 
     # Lazily fetch only the data required for Skills page
     skills_df = _safe_fetch("/api/v1/trends/skills")
@@ -606,8 +1582,8 @@ elif page == "🛠️ Skills":
             template=_PLOTLY_THEME,
             title=f"Top {len(treemap_data)} Skills by Total Job Count",
         )
-        fig_tree.update_layout(**_CHART_LAYOUT)
-        st.plotly_chart(fig_tree, use_container_width=True)
+        _apply_layout(fig_tree)
+        st.plotly_chart(fig_tree, theme=None, use_container_width=True)
 
         st.divider()
 
@@ -630,13 +1606,15 @@ elif page == "🛠️ Skills":
                 labels={"job_count": "Jobs", "published_month": "Month"},
                 color_discrete_sequence=px.colors.qualitative.Vivid,
             )
-            fig.update_layout(**_CHART_LAYOUT)
-            st.plotly_chart(fig, use_container_width=True)
+            _apply_layout(fig, xaxis=dict(showgrid=False), yaxis=dict(showgrid=True))
+            st.plotly_chart(fig, theme=None, use_container_width=True)
 
 # ---- Roles -------------------------------------------------------------------
 elif page == "💼 Roles":
-    st.markdown("# 💼 Job Roles")
-    st.divider()
+    _render_header(
+        "💼 Roles",
+        "Breakdown of the most in-demand job roles in the remote job market."
+    )
 
     # Lazily fetch only the data required for Roles page
     roles_df = _safe_fetch("/api/v1/trends/roles")
@@ -660,8 +1638,8 @@ elif page == "💼 Roles":
             labels={"job_count": "Total Jobs", "role": ""},
         )
         fig.update_coloraxes(showscale=False)
-        fig.update_layout(**_CHART_LAYOUT, yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(fig, use_container_width=True)
+        _apply_layout(fig, yaxis={"categoryorder": "total ascending"})
+        st.plotly_chart(fig, theme=None, use_container_width=True)
 
         st.divider()
 
@@ -685,13 +1663,15 @@ elif page == "💼 Roles":
                 labels={"x": "Month", "y": "Role", "color": "Jobs"},
                 title=f"Top {len(pivot)} Roles × Month Job Count Heatmap",
             )
-            fig_hm.update_layout(**_CHART_LAYOUT)
-            st.plotly_chart(fig_hm, use_container_width=True)
+            _apply_layout(fig_hm)
+            st.plotly_chart(fig_hm, theme=None, use_container_width=True)
 
 # ---- Time Trends -------------------------------------------------------------
 elif page == "📈 Time Trends":
-    st.markdown("# 📈 Hiring Trends Over Time")
-    st.divider()
+    _render_header(
+        "📈 Time Trends",
+        "Monthly hiring velocity and historical volume of remote job postings over time."
+    )
 
     # Lazily fetch only the data required for Time Trends page
     time_df = _safe_fetch("/api/v1/trends/time")
@@ -712,21 +1692,23 @@ elif page == "📈 Time Trends":
                 mode="lines+markers+text",
                 name="Jobs",
                 line=dict(color=_ACCENT, width=2.5),
-                marker=dict(size=8, color=_ACCENT, line=dict(width=2, color="#0d1117")),
+                marker=dict(size=8, color=_ACCENT, line=dict(width=2, color="#ffffff")),
                 fill="tozeroy",
-                fillcolor="rgba(88,166,255,0.08)",
+                fillcolor="rgba(37,99,235,0.08)",
                 text=time_df["job_count"],
                 textposition="top center",
-                textfont=dict(size=10, color="#8b949e"),
+                textfont=dict(size=10, color="#FFFFFF"),
             )
         )
-        fig.update_layout(
-            **_CHART_LAYOUT,
+        _apply_layout(
+            fig,
             xaxis_title="Month",
             yaxis_title="Job Count",
             showlegend=False,
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, theme=None, use_container_width=True)
 
         st.divider()
 
@@ -734,15 +1716,17 @@ elif page == "📈 Time Trends":
         total = int(time_df["job_count"].sum())
         peak_row = time_df.loc[time_df["job_count"].idxmax()]
         c1, c2, c3 = st.columns(3)
-        _kpi(c1, f"{total:,}", "Total Jobs (all time)")
-        _kpi(c2, str(peak_row["published_month"]), "Peak Month")
-        _kpi(c3, f"{int(peak_row['job_count']):,}", "Peak Month Jobs")
+        _kpi(c1, f"{total:,}", "Total Jobs (all time)", "#3b82f6")
+        _kpi(c2, str(peak_row["published_month"]), "Peak Month", "#8b5cf6")
+        _kpi(c3, f"{int(peak_row['job_count']):,}", "Peak Month Jobs", "#ec4899")
 
 # ---- Salary Analysis ---------------------------------------------------------
 elif page == "💸 Salary Analysis":
-    st.markdown("# 💸 Salary Intelligence")
-    st.markdown("Dynamic salary aggregation and market intelligence parsed directly from our job trends database.")
-    st.divider()
+    _render_header(
+        "💸 Salary Analysis",
+        "Dynamic salary aggregation and market intelligence parsed directly from our job trends database."
+    )
+    st.markdown("") 
 
     # Fetch available currencies dynamically
     currencies = []
@@ -770,9 +1754,9 @@ elif page == "💸 Salary Analysis":
         highest_paying_val = salary_role_df.iloc[0]["avg_salary"]
         total_sal_jobs = salary_role_df["job_count"].sum()
 
-        _kpi(c1, f"{selected_currency} {int(avg_sal_role):,}", "Average Role Salary")
-        _kpi(c2, f"{highest_paying_role}", f"Top Role ({selected_currency} {int(highest_paying_val):,})")
-        _kpi(c3, f"{int(total_sal_jobs):,}", "Jobs Analysed")
+        _kpi(c1, f"{selected_currency} {int(avg_sal_role):,}", "Average Role Salary", "#3b82f6")
+        _kpi(c2, f"{highest_paying_role}", f"Top Role ({selected_currency} {int(highest_paying_val):,})", "#10b981")
+        _kpi(c3, f"{int(total_sal_jobs):,}", "Jobs Analysed", "#8b5cf6")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -791,8 +1775,8 @@ elif page == "💸 Salary Analysis":
                 labels={"avg_salary": "Average Salary", "role": ""},
             )
             fig_role.update_coloraxes(showscale=False)
-            fig_role.update_layout(**_CHART_LAYOUT, yaxis={"categoryorder": "total ascending"})
-            st.plotly_chart(fig_role, use_container_width=True)
+            _apply_layout(fig_role, yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig_role, theme=None, use_container_width=True)
 
         with right_chart:
             st.markdown('<div class="section-header">Average Salary by Country</div>', unsafe_allow_html=True)
@@ -808,8 +1792,8 @@ elif page == "💸 Salary Analysis":
                     labels={"avg_salary": "Average Salary", "country": ""},
                 )
                 fig_country.update_coloraxes(showscale=False)
-                fig_country.update_layout(**_CHART_LAYOUT, yaxis={"categoryorder": "total ascending"})
-                st.plotly_chart(fig_country, use_container_width=True)
+                _apply_layout(fig_country, yaxis={"categoryorder": "total ascending"})
+                st.plotly_chart(fig_country, theme=None, use_container_width=True)
             else:
                 _empty_chart("Country Salaries")
 
@@ -859,24 +1843,53 @@ elif page == "💸 Salary Analysis":
 
 # ---- AI Resume Matcher ----------------------------------------------------
 elif page == "🧠 Resume Matcher":
-    st.markdown("# 🧠 AI-Powered Resume Matcher")
-    st.markdown("Provide your resume or skills. Gemini AI will build a professional summary, extract key skills, suggest roles, and recommend the best-matching remote jobs.")
-    st.divider()
-
-    # User input
-    resume_input = st.text_area(
-        "Paste your resume or skills details below:",
-        placeholder="e.g. Senior Data Engineer with 5 years experience in Python, PostgreSQL, AWS, Apache Spark, Airflow, and building data pipelines.",
-        height=150,
+    _render_header(
+        "🧠 Resume Matcher",
+        "Provide your resume or skills. Gemini AI will build a professional summary, extract key skills, suggest roles, and recommend the best-matching remote jobs."
     )
+    st.markdown("") 
 
-    if resume_input:
-        if len(resume_input.strip()) < 10:
+    # Two input methods: File Uploader or Text Area
+    st.markdown("### 📤 Input Method")
+    input_method = st.radio("Choose how to provide your profile:", ["Upload Resume (PDF)", "Paste Resume Text"], horizontal=True)
+
+    resume_text = ""
+
+    if input_method == "Upload Resume (PDF)":
+        uploaded_file = st.file_uploader("Upload your resume in PDF format:", type=["pdf"])
+        if uploaded_file is not None:
+            with st.spinner("📄 Reading PDF resume..."):
+                try:
+                    import pypdf
+                    reader = pypdf.PdfReader(uploaded_file)
+                    extracted_text_list = []
+                    for page_num in range(len(reader.pages)):
+                        text = reader.pages[page_num].extract_text()
+                        if text:
+                            extracted_text_list.append(text)
+                    resume_text = "\n".join(extracted_text_list).strip()
+                    if resume_text:
+                        st.success(f"Successfully extracted {len(resume_text)} characters of text from '{uploaded_file.name}'!")
+                        with st.expander("🔍 Preview Extracted Text"):
+                            st.text(resume_text[:600] + "...")
+                    else:
+                        st.error("No text could be extracted from this PDF. Please check if it is scanned or use the text area method.")
+                except Exception as e:
+                    st.error(f"Error parsing PDF: {e}")
+    else:
+        resume_text = st.text_area(
+            "Paste your resume or skills details below:",
+            placeholder="e.g. Senior Data Engineer with 5 years experience in Python, PostgreSQL, AWS, Apache Spark, Airflow, and building data pipelines.",
+            height=150,
+        ).strip()
+
+    if resume_text:
+        if len(resume_text) < 10:
             st.warning("Please provide a longer description (at least 10 characters).")
         else:
             with st.spinner("🧠 Gemini AI is analysing your resume..."):
                 payload = {
-                    "resume_text": resume_input,
+                    "resume_text": resume_text,
                     "top_n": top_n
                 }
                 try:
@@ -888,8 +1901,8 @@ elif page == "🧠 Resume Matcher":
                         st.subheader("🤖 AI Career Profile Summary")
                         st.markdown(
                             f"""
-                            <div style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 1px solid #30363d; border-radius: 12px; padding: 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); margin-bottom: 24px;">
-                                <p style="font-size: 1.05rem; line-height: 1.6; color: #e6edf3; font-style: italic; margin: 0;">
+                            <div style="background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%); border: none; border-radius: 12px; padding: 20px; box-shadow: var(--shadow-card); margin-bottom: 24px;">
+                                <p style="font-size: 1.05rem; line-height: 1.6; color: #ffffff; font-style: italic; margin: 0; font-weight: 500;">
                                     "{result['ai_summary']}"
                                 </p>
                             </div>
@@ -900,7 +1913,7 @@ elif page == "🧠 Resume Matcher":
                         # Render extracted skills
                         st.subheader("🛠️ Extracted Technical Skills")
                         skills_html = "".join(
-                            f'<span style="background-color: #162c46; color: #58a6ff; font-weight: 500; font-size: 0.85rem; padding: 4px 12px; border-radius: 16px; margin-right: 8px; margin-bottom: 8px; display: inline-block; border: 1px solid #30363d;">{s}</span>'
+                            f'<span style="background-color: rgba(139, 92, 246, 0.15); color: #C4B5FD; font-weight: 600; font-size: 0.85rem; padding: 4px 12px; border-radius: 16px; margin-right: 8px; margin-bottom: 8px; display: inline-block; border: 1px solid rgba(139, 92, 246, 0.30);">{s}</span>'
                             for s in result["extracted_skills"]
                         )
                         st.markdown(skills_html, unsafe_allow_html=True)
@@ -910,7 +1923,7 @@ elif page == "🧠 Resume Matcher":
                         if result.get("recommended_roles"):
                             st.subheader("💼 Recommended Positions")
                             roles_html = "".join(
-                                f'<span style="background-color: #382402; color: #f0883e; font-weight: 500; font-size: 0.85rem; padding: 4px 12px; border-radius: 16px; margin-right: 8px; margin-bottom: 8px; display: inline-block; border: 1px solid #30363d;">{r}</span>'
+                                f'<span style="background-color: rgba(245, 158, 11, 0.08); color: #D97706; font-weight: 600; font-size: 0.85rem; padding: 4px 12px; border-radius: 16px; margin-right: 8px; margin-bottom: 8px; display: inline-block; border: 1px solid rgba(245, 158, 11, 0.18);">{r}</span>'
                                 for r in result["recommended_roles"]
                             )
                             st.markdown(roles_html, unsafe_allow_html=True)
@@ -936,19 +1949,34 @@ elif page == "🧠 Resume Matcher":
                                     curr = job.get("salary_currency") or "$"
                                     salary_str = f"{curr}{int(job['salary_min']):,} - {curr}{int(job['salary_max']):,}"
 
+                                match_score = job.get("match_score", 0)
+                                if match_score >= 75:
+                                    score_color = "#10b981"  # green
+                                    score_bg = "rgba(16, 185, 129, 0.08)"
+                                    score_border = "rgba(16, 185, 129, 0.18)"
+                                elif match_score >= 40:
+                                    score_color = "#f59e0b"  # orange
+                                    score_bg = "rgba(245, 158, 11, 0.08)"
+                                    score_border = "rgba(245, 158, 11, 0.18)"
+                                else:
+                                    score_color = "#ef4444"  # red
+                                    score_bg = "rgba(239, 68, 68, 0.08)"
+                                    score_border = "rgba(239, 68, 68, 0.18)"
+
                                 with st.container():
                                     st.markdown(
                                         f"""
-                                        <div style="background-color: #161b22; border: 1px solid #21262d; border-radius: 12px; padding: 18px; margin-bottom: 12px;">
-                                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                                <h4 style="margin: 0; font-size: 1.1rem;"><a href="{url}" target="_blank" style="color: #58a6ff; text-decoration: none;">{title}</a></h4>
+                                        <div class="premium-card">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                                <h4 style="margin: 0; font-size: 1.1rem; color: #F8FAFC;"><a href="{url}" target="_blank" style="color: #818CF8; text-decoration: none; font-weight: 700;">{title}</a></h4>
                                                 <div>
-                                                    <span style="background-color: #162c46; color: #58a6ff; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; text-transform: uppercase;">{source}</span>
-                                                    <span style="background-color: #382402; color: #f0883e; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; text-transform: uppercase; margin-left: 6px;">{seniority}</span>
+                                                    <span style="background-color: {score_bg}; color: {score_color}; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; font-weight: 700; border: 1px solid {score_border}; margin-right: 6px;">🎯 {match_score}% MATCH</span>
+                                                    <span style="background-color: rgba(6, 182, 212, 0.12); color: #22D3EE; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; text-transform: uppercase; border: 1px solid rgba(6, 182, 212, 0.25);">{source}</span>
+                                                    <span style="background-color: rgba(245, 158, 11, 0.12); color: #FCD34D; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; text-transform: uppercase; margin-left: 6px; border: 1px solid rgba(245, 158, 11, 0.25);">{seniority}</span>
                                                 </div>
                                             </div>
-                                            <div style="color: #e6edf3; font-weight: 500; font-size: 0.95rem; margin-top: 4px;">{company}</div>
-                                            <div style="color: #8b949e; font-size: 0.8rem; margin-top: 8px;">
+                                            <div style="color: #CBD5E1; font-weight: 600; font-size: 0.95rem; margin-top: 6px;">{company}</div>
+                                            <div style="color: #94A3B8; font-size: 0.8rem; margin-top: 8px;">
                                                 📍 {location} &bull; 💰 {salary_str} &bull; ID: #{job_id}
                                             </div>
                                         </div>
@@ -980,9 +2008,11 @@ elif page == "🧠 Resume Matcher":
 
 # ---- Email Alerts ------------------------------------------------------------
 elif page == "📧 Email Alerts":
-    st.markdown("# 📧 Job Alert Email Subscriptions")
-    st.markdown("Set up a customized daily email digest of newly ingested remote jobs matching your skills.")
-    st.divider()
+    _render_header(
+        "📧 Email Alerts",
+        "Set up a customized daily email digest of newly ingested remote jobs matching your skills."
+    )
+    st.markdown("") 
 
     # Dynamic loading of skill options for multiselect
     skills_df = _safe_fetch("/api/v1/trends/skills", {"limit": 100})
@@ -1094,9 +2124,10 @@ elif page == "📧 Email Alerts":
 
 # ---- Browse Jobs -------------------------------------------------------------
 elif page == "🗂️ Browse Jobs":
-    st.markdown("# 🗂️ Browse Job Postings")
-    st.markdown("Raw bronze-layer job records from the ingestion pipeline.")
-    st.divider()
+    _render_header(
+        "🗂️ Browse Jobs",
+        "Raw bronze-layer job records from the ingestion pipeline."
+    )
 
     # Get all active sources from stats, excluding session alias 'all'
     active_sources = [s for s in stats.get("sources", []) if s != "all"]
@@ -1210,11 +2241,141 @@ elif page == "🗂️ Browse Jobs":
         _empty_chart("Jobs")
 
 
+# ---- Data Quality Page --------------------------------------------------------
+elif page == "🔍 Data Quality":
+    _render_header(
+        "🔍 Data Quality",
+        "A live observability and auditing dashboard checking data completeness and schema integrity. Evaluates the 200 most recent ingested job postings."
+    )
+
+    # Fetch fresh batch of 200 jobs
+    dq_df = _safe_fetch("/api/v1/jobs", {"page_size": 200})
+
+    if dq_df.empty:
+        st.warning("No job records found to analyze. Run the ingestion pipeline first!")
+    else:
+        # 1. Calculate metrics
+        total_analyzed = len(dq_df)
+        
+        # Location fill rate
+        location_filled = dq_df["country"].apply(lambda c: str(c).strip().lower() not in ["unknown", "none", "nan", ""])
+        loc_fill_rate = (location_filled.sum() / total_analyzed) * 100
+        
+        # Salary fill rate
+        salary_filled = dq_df["salary_min"].notna() & dq_df["salary_max"].notna()
+        salary_fill_rate = (salary_filled.sum() / total_analyzed) * 100
+        
+        # Tags fill rate
+        tags_filled = dq_df["tags"].apply(lambda t: isinstance(t, list) and len(t) > 0)
+        tags_fill_rate = (tags_filled.sum() / total_analyzed) * 100
+        
+        # Average tags per job
+        avg_tags = dq_df["tags"].apply(lambda t: len(t) if isinstance(t, list) else 0).mean()
+
+        # Render KPI Cards
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        _kpi(col_m1, f"{total_analyzed}", "Analyzed Jobs", "#3b82f6")
+        _kpi(col_m2, f"{loc_fill_rate:.1f}%", "Location Fill Rate", "#10b981")
+        _kpi(col_m3, f"{salary_fill_rate:.1f}%", "Salary Fill Rate", "#f59e0b")
+        _kpi(col_m4, f"{avg_tags:.1f}", "Avg Tags / Job", "#8b5cf6")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Quality distribution details
+        st.markdown('<div class="section-header">Data Completeness Audit</div>', unsafe_allow_html=True)
+        left_dq, right_dq = st.columns(2)
+        
+        with left_dq:
+            st.markdown("#### Schema Nullability Metrics")
+            # Create nullability dataframe
+            nullability_data = {
+                "Field": ["Salary Info", "Country / Location", "Skill Tags", "Company Name", "Job URL", "Job Category"],
+                "Completeness %": [
+                    salary_fill_rate,
+                    loc_fill_rate,
+                    tags_fill_rate,
+                    (dq_df["company_name"].notna().sum() / total_analyzed) * 100,
+                    (dq_df["url"].notna().sum() / total_analyzed) * 100,
+                    (dq_df["category"].apply(lambda x: str(x).strip().lower() not in ["none", "nan", "unknown", ""]).sum() / total_analyzed) * 100
+                ]
+            }
+            null_df = pd.DataFrame(nullability_data)
+            fig_null = px.bar(
+                null_df,
+                x="Completeness %",
+                y="Field",
+                orientation="h",
+                text="Completeness %",
+                color="Completeness %",
+                color_continuous_scale="Blues",
+                template=_PLOTLY_THEME
+            )
+            fig_null.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+            _apply_layout(fig_null, yaxis={"categoryorder": "total ascending"})
+            fig_null.update_coloraxes(showscale=False)
+            st.plotly_chart(fig_null, theme=None, use_container_width=True)
+
+        with right_dq:
+            st.markdown("#### Ingestion Sources Distribution")
+            source_counts = dq_df["source"].value_counts().reset_index()
+            source_counts.columns = ["source", "count"]
+            fig_source = px.pie(
+                source_counts,
+                names="source",
+                values="count",
+                hole=0.4,
+                color_discrete_sequence=px.colors.sequential.Blues_r,
+                template=_PLOTLY_THEME
+            )
+            _apply_layout(fig_source)
+            st.plotly_chart(fig_source, theme=None, use_container_width=True)
+
+        st.divider()
+
+        # Detailed Seniority vs Salary quality analysis
+        left_sal, right_sal = st.columns(2)
+        with left_sal:
+            st.markdown('<div class="section-header">Seniority Tag Distribution</div>', unsafe_allow_html=True)
+            seniority_counts = dq_df["seniority"].value_counts().reset_index()
+            seniority_counts.columns = ["seniority", "count"]
+            fig_sen = px.bar(
+                seniority_counts,
+                x="seniority",
+                y="count",
+                color="count",
+                color_continuous_scale="Blues",
+                template=_PLOTLY_THEME,
+                labels={"count": "Job Postings", "seniority": "Seniority Level"}
+            )
+            _apply_layout(fig_sen, xaxis=dict(showgrid=False), yaxis=dict(showgrid=True))
+            fig_sen.update_coloraxes(showscale=False)
+            st.plotly_chart(fig_sen, theme=None, use_container_width=True)
+            
+        with right_sal:
+            st.markdown('<div class="section-header">Salary Range Data Integrity</div>', unsafe_allow_html=True)
+            valid_sal_df = dq_df[dq_df["salary_min"].notna() & dq_df["salary_max"].notna()]
+            if not valid_sal_df.empty:
+                fig_scatter = px.scatter(
+                    valid_sal_df,
+                    x="salary_min",
+                    y="salary_max",
+                    color="seniority",
+                    hover_data=["title", "company_name"],
+                    template=_PLOTLY_THEME,
+                    labels={"salary_min": "Minimum Salary (USD)", "salary_max": "Maximum Salary (USD)"}
+                )
+                _apply_layout(fig_scatter, xaxis=dict(showgrid=True), yaxis=dict(showgrid=True))
+                st.plotly_chart(fig_scatter, theme=None, use_container_width=True)
+            else:
+                st.info("No salary details available in the current batch to plot salary range integrity.")
+
+
 # ---- Bookmarks Page -----------------------------------------------------------
 elif page == "🔖 Bookmarks":
-    st.markdown("# 🔖 Starred & Bookmarked Jobs")
-    st.markdown("Your saved remote job opportunities with personal notes.")
-    st.divider()
+    _render_header(
+        "🔖 Bookmarks",
+        "Your saved remote job opportunities with personal notes."
+    )
 
     try:
         r = requests.get(f"{BASE}/api/v1/bookmarks", timeout=15)
@@ -1244,12 +2405,13 @@ elif page == "🔖 Bookmarks":
             with st.container():
                 st.markdown(
                     f"""
-                    <div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
-                        <span style="background-color: #21262d; color: #58a6ff; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 12px; margin-right: 8px;">ID: {job_id}</span>
-                        <span style="background-color: #1f2937; color: #8b949e; font-size: 0.7rem; padding: 2px 8px; border-radius: 12px;">{source}</span>
-                        <h3 style="margin: 8px 0 2px 0;"><a href="{url}" target="_blank" style="color: #58a6ff; text-decoration: none;">{title}</a></h3>
-                        <div style="color: #c9d1d9; font-weight: 500; font-size: 0.9rem; margin-bottom: 8px;">{company}</div>
-                        <div style="font-size: 0.75rem; color: #8b949e; margin-bottom: 12px;">Saved on {bookmarked_at}</div>
+                    <div class="premium-card">
+                        <span style="background-color: rgba(139,92,246,0.15); color: #C4B5FD; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; margin-right: 8px; border: 1px solid rgba(139,92,246,0.30);">ID: {job_id}</span>
+                        <span style="background-color: rgba(6,182,212,0.12); color: #22D3EE; font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(6,182,212,0.25);">{source}</span>
+                        <h3 style="margin: 10px 0 2px 0; color: #F8FAFC;"><a href="{url}" target="_blank" style="color: #818CF8; text-decoration: none; font-weight: 700;">{title}</a></h3>
+                        <div style="color: #CBD5E1; font-weight: 600; font-size: 0.9rem; margin-bottom: 6px;">{company}</div>
+                        <div style="font-size: 0.75rem; color: #94A3B8; margin-bottom: 4px;">Saved on {bookmarked_at}</div>
+                        {f'<div style="font-size: 0.82rem; color: #CBD5E1; margin-top: 6px; padding: 6px 10px; background: rgba(139,92,246,0.08); border-radius: 6px; border-left: 3px solid #8B5CF6;">📝 {notes}</div>' if notes else ''}
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -1287,15 +2449,13 @@ elif page == "🔖 Bookmarks":
                         except Exception as exc:
                             st.error(f"Error: {exc}")
                 
-                st.markdown("<hr style='margin: 16px 0; border-color: #21262d;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 16px 0; border: none; height: 1px; background: linear-gradient(90deg, transparent, rgba(79,70,229,0.15), transparent);'>", unsafe_allow_html=True)
 
 
 
 
 # ---------------------------------------------------------------------------
-# Auto-refresh — sleeps 60s then clears cache and reruns
+# Auto-refresh — non-blocking refresh using streamlit-autorefresh
 # ---------------------------------------------------------------------------
 if auto_refresh:
-    time.sleep(60)
-    st.cache_data.clear()
-    st.rerun()
+    st_autorefresh(interval=60000, key="auto_refresh_timer")

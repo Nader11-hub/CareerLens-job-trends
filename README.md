@@ -11,7 +11,7 @@
 
 CareerLens is a production-grade data engineering pipeline designed to ingest, transform, and serve global remote job market insights. It features a robust **Medallion Architecture** (Bronze ➡️ Silver ➡️ Gold), resilient dead-letter handling with a retry-and-promote backfill loop, clean type safety (via Pydantic), automated test coverage, and premium serving layers (FastAPI + Streamlit).
 
-Designed as an end-to-end portfolio and graduation-quality project, it shows how to build pipelines with local SQLite/Postgres backends, automate transformations using **dbt**, and deploy multi-container environments with Docker Compose.
+Designed as an end-to-end portfolio and graduation-quality project, it shows how to build pipelines with local SQLite/MySQL backends, automate transformations using **dbt**, and deploy multi-container environments with Docker Compose.
 
 ---
 
@@ -173,14 +173,14 @@ View the dashboard at [http://localhost:8501](http://localhost:8501) (includes f
 
 ## 🐳 Docker Compose Deployment
 
-The stack is packaged into a hardened multi-container Docker Compose file (`docker-compose.yml`). To spin up PostgreSQL, the FastAPI backend, the Streamlit frontend, and the scheduler daemon:
+The stack is packaged into a hardened multi-container Docker Compose file (`docker-compose.yml`). To spin up MySQL, the FastAPI backend, the Streamlit frontend, and the scheduler daemon:
 
 ```bash
 docker compose up --build
 ```
 
 ### Services Available
-- **Postgres Database**: `localhost:5432`
+- **MySQL Database**: `localhost:3306`
 - **FastAPI Core REST API**: `http://localhost:8000` (incorporates health checks and automatic startup migrations)
 - **Streamlit Analytics Dashboard**: `http://localhost:8501` (waits for the API health check to pass; auto-refreshes every 60 s and shows a **"Last updated"** timestamp in the sidebar)
 - **Scheduler (APScheduler Daemon)**: Runs in the background, executing the ingestion, dbt models, and backfill steps on a **configurable interval** (default: **5 min**, set via `PIPELINE_INTERVAL_MINUTES`). This is a near-real-time batch pipeline — see [Real-Time Behavior](#%EF%B8%8F-real-time-behavior) for rationale.
@@ -193,11 +193,18 @@ docker compose up --build
 |---|---|---|---|
 | `/health` | `GET` | None | API and database connectivity health check |
 | `/api/v1/stats` | `GET` | None | Pipelines statistics (total ingested jobs, dead letters, database sizes) |
-| `/api/v1/jobs` | `GET` | `page`, `limit`, `source` | Paginated raw job posting records from Bronze |
+| `/api/v1/jobs` | `GET` | `page`, `limit`, `source`, `seniority`, `min_salary` | Paginated enriched job postings from Bronze + Silver |
 | `/api/v1/trends/countries`| `GET` | `limit`, `month`, `country` | Monthly aggregates filtered by country and month |
 | `/api/v1/trends/skills` | `GET` | `limit`, `month`, `skill` | Monthly skill demand aggregates (explodes tags array) |
 | `/api/v1/trends/roles` | `GET` | `limit`, `month`, `role` | Monthly demand for normalized role types |
-| `/api/v1/trends/time` | `GET` | `limit`, `month` | Monthly total posting volume trends |
+| `/api/v1/trends/time` | `GET` | `limit` | Monthly total posting volume trends |
+| `/api/v1/salary/by-role` | `GET` | `currency`, `limit` | Average, min, and max salary grouped by role |
+| `/api/v1/salary/by-country` | `GET` | `currency`, `limit` | Average, min, and max salary grouped by country |
+| `/api/v1/bookmarks` | `GET` | None | Get all bookmarked jobs with user notes |
+| `/api/v1/bookmarks` | `POST` | `job_id`, `notes` | Bookmark a job posting |
+| `/api/v1/bookmarks` | `DELETE` | `job_id` | Remove a job bookmark |
+| `/api/v1/subscriptions` | `POST` | `name`, `email`, `skills` | Subscribe to daily job-alert digests |
+| `/api/v1/ai/recommend` | `POST` | `resume_text`, `top_n` | Google Gemini-powered job recommendations |
 
 ---
 
@@ -207,7 +214,7 @@ A `.env` file controls system configuration:
 
 | Variable | Default Value | Description |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///careerlens_local.db` | SQLAlchemy connection string (SQLite locally, PostgreSQL in Docker) |
+| `DATABASE_URL` | `mysql+pymysql://root:nader@127.0.0.1:3306/careerlens?charset=utf8mb4` | SQLAlchemy connection string (MySQL backend) |
 | `REMOTIVE_API_URL` | `https://remotive.com/api/remote-jobs` | Source API URL endpoint |
 | `FALLBACK_DATASET_PATH`| `data/fallback/kaggle_fallback.csv` | Relative or absolute path to local CSV fallback seed |
 | `LOG_LEVEL` | `INFO` | Logger verbosity level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |

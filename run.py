@@ -3,6 +3,12 @@ import subprocess
 import sys
 import time
 
+# Force stdout/stderr to use UTF-8 encoding (prevents UnicodeEncodeError on Windows)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 def run_project():
     # Detect the current python executable (will use virtual environment python if active)
     python_bin = sys.executable

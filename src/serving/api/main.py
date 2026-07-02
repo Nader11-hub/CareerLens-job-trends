@@ -228,6 +228,7 @@ def list_jobs(
             salary_max=silver.salary_max if silver else None,
             salary_currency=silver.salary_currency if silver else None,
             seniority=silver.seniority if silver else None,
+            tags=bronze.tags,
         )
         for bronze, silver in jobs_data
     ]

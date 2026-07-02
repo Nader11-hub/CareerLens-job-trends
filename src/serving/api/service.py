@@ -553,12 +553,18 @@ Resume/Skills text:
         score = skill_matches + role_bonus
 
         if score > 0:
-            scored.append((score, bronze, silver))
+            if len(skill_set) > 0:
+                match_percent = int((skill_matches / len(skill_set)) * 100)
+                if role_bonus > 0:
+                    match_percent = min(100, match_percent + 15)
+            else:
+                match_percent = 100 if role_bonus > 0 else 0
+            scored.append((score, match_percent, bronze, silver))
 
-    scored.sort(key=lambda x: x[0], reverse=True)
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
 
     matched_jobs = []
-    for _, bronze, silver in scored[:top_n]:
+    for _, match_percent, bronze, silver in scored[:top_n]:
         matched_jobs.append({
             "id": bronze.id,
             "title": bronze.title,
@@ -573,6 +579,8 @@ Resume/Skills text:
             "salary_max": silver.salary_max if silver else None,
             "salary_currency": silver.salary_currency if silver else None,
             "seniority": silver.seniority if silver else None,
+            "match_score": match_percent,
+            "tags": bronze.tags,
         })
 
     return {

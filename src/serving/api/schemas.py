@@ -64,6 +64,8 @@ class JobSummaryResponse(BaseModel):
     salary_max: float | None = None
     salary_currency: str | None = None
     seniority: str | None = None
+    match_score: int | None = None
+    tags: list[str] | None = None
 
 
 class SubscriptionCreate(BaseModel):
@@ -164,7 +166,7 @@ class SalaryByCountryResponse(BaseModel):
 class AIRecommendRequest(BaseModel):
     """Request payload for AI-powered job recommendations."""
 
-    resume_text: str = Field(..., min_length=10, max_length=5000, description="User's skills or resume text")
+    resume_text: str = Field(..., min_length=10, max_length=50000, description="User's skills or resume text")
     top_n: int = Field(default=10, ge=1, le=50, description="Number of job recommendations to return")
 
 
