@@ -1314,7 +1314,7 @@ def _api_request(method: str, url: str, json_data: dict | None = None, params: d
     # Auto-recovery: If in fallback mode but running locally, try to ping the API
     if st.session_state.api_fallback and ("localhost" in BASE or "127.0.0.1" in BASE):
         try:
-            _real_requests.get(f"{BASE}/api/v1/stats", timeout=1.0)
+            _real_requests.get(f"{BASE}/api/v1/stats", timeout=3.0)
             st.session_state.api_fallback = False
             st.toast("🔌 Reconnected to local CareerLens API backend!", icon="✅")
         except Exception:
@@ -1326,7 +1326,7 @@ def _api_request(method: str, url: str, json_data: dict | None = None, params: d
     try:
         r = _real_requests.request(method, url, json=json_data, params=params, timeout=timeout)
         return r
-    except (_real_requests.exceptions.ConnectionError, _real_requests.exceptions.Timeout):
+    except _real_requests.RequestException:
         st.session_state.api_fallback = True
         return _simulate_api(method, endpoint, json_data, params)
 
@@ -1551,6 +1551,21 @@ with st.sidebar:
         ],
         label_visibility="collapsed",
     )
+    st.divider()
+
+    st.markdown("### 🔌 Connection Mode")
+    live_mode = st.checkbox(
+        "Connect to Live API",
+        value=not st.session_state.api_fallback,
+        help="Check this to connect to the local API server running on port 8000. Uncheck to run in offline Kaggle fallback mode."
+    )
+    if live_mode and st.session_state.api_fallback:
+        st.session_state.api_fallback = False
+        st.rerun()
+    elif not live_mode and not st.session_state.api_fallback:
+        st.session_state.api_fallback = True
+        st.rerun()
+
     st.divider()
 
     auto_refresh = st.toggle("Auto-refresh (60 s)", value=False)
