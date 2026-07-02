@@ -1413,13 +1413,28 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
             extracted = ["python", "sql"]
             
         if db_exists:
-            like_clauses = " OR ".join(["title LIKE ?" for _ in extracted] + ["tags LIKE ?" for _ in extracted])
+            like_clauses = " OR ".join(["s.title LIKE ?" for _ in extracted] + ["s.tags LIKE ?" for _ in extracted])
             like_params = [f"%{e}%" for e in extracted] * 2
-            df = _query_local_sqlite(f"SELECT * FROM silver_jobs WHERE {like_clauses} LIMIT 50", tuple(like_params))
+            sql = f"""SELECT s.job_id AS id, s.source, s.title, s.company_name, s.category, s.role,
+                      s.country, s.tags, s.publication_date, s.published_month, s.salary_min, s.salary_max,
+                      s.salary_currency, s.seniority, coalesce(b.url, '') AS url
+                      FROM silver_jobs s
+                      LEFT JOIN bronze_jobs b ON s.job_id = b.id
+                      WHERE {like_clauses} LIMIT 50"""
+            df = _query_local_sqlite(sql, tuple(like_params))
             if df.empty:
-                df = _query_local_sqlite("SELECT * FROM silver_jobs LIMIT 10")
+                df = _query_local_sqlite("""SELECT s.job_id AS id, s.source, s.title, s.company_name, s.category, s.role,
+                                            s.country, s.tags, s.publication_date, s.published_month, s.salary_min, s.salary_max,
+                                            s.salary_currency, s.seniority, coalesce(b.url, '') AS url
+                                            FROM silver_jobs s
+                                            LEFT JOIN bronze_jobs b ON s.job_id = b.id
+                                            LIMIT 10""")
         else:
             df = _get_fallback_silver_df()
+            if "job_id" in df.columns and "id" not in df.columns:
+                df = df.rename(columns={"job_id": "id"})
+            if "url" not in df.columns:
+                df["url"] = ""
         
         def calc_score(row):
             title_tags = (str(row.get("title", "")) + " " + str(row.get("tags", "")) + " " + str(row.get("category", ""))).lower()
@@ -1436,7 +1451,7 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
             "ai_summary": f"Based on your profile, you exhibit solid expertise in: {', '.join(extracted).upper()}. We recommend targeting remote jobs matching these keywords.",
             "extracted_skills": extracted,
             "recommended_roles": ["Developer", "Data Analyst"],
-            "recommendations": df.to_dict("records")
+            "matched_jobs": df.to_dict("records")
         }, 200)
         
     return MockResponse({}, 404)
