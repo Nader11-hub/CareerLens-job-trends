@@ -1174,12 +1174,18 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
             total_jobs = int(df_jobs.iloc[0]["count"]) if not df_jobs.empty else 0
             df_src = _query_local_sqlite("SELECT DISTINCT source FROM silver_jobs")
             sources = df_src["source"].str.lower().tolist() if not df_src.empty else ["kaggle"]
+            df_countries = _query_local_sqlite("SELECT COUNT(DISTINCT country) as count FROM silver_jobs")
+            total_countries = int(df_countries.iloc[0]["count"]) if not df_countries.empty else 0
+            df_skills = _query_local_sqlite("SELECT COUNT(DISTINCT skill) as count FROM gold_skill_trends")
+            total_skills = int(df_skills.iloc[0]["count"]) if not df_skills.empty else 0
             return MockResponse({
                 "total_jobs": total_jobs,
                 "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "earliest_job": "2025-12-12",
                 "latest_job": datetime.now().strftime("%Y-%m-%d"),
                 "sources": sources,
+                "total_countries": total_countries,
+                "total_skills": total_skills,
                 "total_dead_letters": 0
             }, 200)
         else:
@@ -1190,6 +1196,8 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
                 "earliest_job": "2025-12-12",
                 "latest_job": "2026-07-02",
                 "sources": ["kaggle"],
+                "total_countries": df["country"].nunique() if "country" in df.columns else 0,
+                "total_skills": 0,
                 "total_dead_letters": 0
             }, 200)
         
@@ -1423,41 +1431,31 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
 # Save the original requests module to avoid infinite recursion when proxying
 _real_requests = requests
 
-def _api_request(method: str, url: str, json_data: dict | None = None, params: dict | None = None, timeout: int = 15):
+def _api_request(method: str, url: str, json_data: dict | None = None, params: dict | None = None, timeout: int = 15, _fallback: bool = False):
     """Executes a network request to the API backend, falling back to local simulation on connection failure."""
     endpoint = url.replace(BASE, "")
     
-    # Auto-recovery: If in fallback mode but running locally, try to ping the API
-    if st.session_state.api_fallback and ("localhost" in BASE or "127.0.0.1" in BASE):
-        try:
-            _real_requests.get(f"{BASE}/api/v1/stats", timeout=3.0)
-            st.session_state.api_fallback = False
-            st.toast("🔌 Reconnected to local CareerLens API backend!", icon="✅")
-        except Exception:
-            pass
-            
-    if st.session_state.api_fallback:
+    if _fallback:
         return _simulate_api(method, endpoint, json_data, params)
         
     try:
         r = _real_requests.request(method, url, json=json_data, params=params, timeout=timeout)
         return r
     except _real_requests.RequestException:
-        st.session_state.api_fallback = True
         return _simulate_api(method, endpoint, json_data, params)
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _fetch(endpoint: str, params: dict | None = None) -> pd.DataFrame:
+def _fetch(endpoint: str, params: dict | None = None, _fallback: bool = False) -> pd.DataFrame:
     """Fetch JSON data from the CareerLens API and return as a DataFrame."""
-    r = _api_request("GET", f"{BASE}{endpoint}", params=params)
+    r = _api_request("GET", f"{BASE}{endpoint}", params=params, _fallback=_fallback)
     r.raise_for_status()
     data = r.json()
     return pd.DataFrame(data) if data else pd.DataFrame()
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _fetch_stats() -> dict:
-    r = _api_request("GET", f"{BASE}/api/v1/stats")
+def _fetch_stats(_fallback: bool = False) -> dict:
+    r = _api_request("GET", f"{BASE}/api/v1/stats", _fallback=_fallback)
     r.raise_for_status()
     return r.json()
 
@@ -1491,7 +1489,8 @@ def _safe_fetch(endpoint: str, params: dict | None = None) -> pd.DataFrame:
             params = {}
         if "limit" not in params and "trends" in endpoint:
             params["limit"] = 500
-        return _fetch(endpoint, params)
+        fallback = st.session_state.get("api_fallback", True)
+        return _fetch(endpoint, params, _fallback=fallback)
     except Exception as exc:
         st.warning(f"⚠️ Could not load data from {endpoint}: {exc}")
         return pd.DataFrame()
@@ -1718,7 +1717,17 @@ with st.sidebar:
 # Other data is fetched lazily per page to avoid slow navigation.
 # ---------------------------------------------------------------------------
 try:
-    stats = _fetch_stats()
+    _fallback_flag = st.session_state.get("api_fallback", True)
+    # Auto-recovery: if in fallback but running locally, try to reconnect
+    if _fallback_flag and ("localhost" in BASE or "127.0.0.1" in BASE):
+        try:
+            _real_requests.get(f"{BASE}/api/v1/stats", timeout=3.0)
+            st.session_state.api_fallback = False
+            _fallback_flag = False
+            st.toast("🔌 Reconnected to local CareerLens API backend!", icon="✅")
+        except Exception:
+            pass
+    stats = _fetch_stats(_fallback=_fallback_flag)
 except requests.RequestException as exc:
     st.error(f"❌ Cannot reach the CareerLens API at **{BASE}**")
     st.code(str(exc))
