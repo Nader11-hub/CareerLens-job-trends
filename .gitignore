@@ -23,6 +23,7 @@ env/
 # Local databases and generated data
 *.sqlite
 *.db
+!careerlens_local.db
 local_postgres_data/
 logs/
 *.log

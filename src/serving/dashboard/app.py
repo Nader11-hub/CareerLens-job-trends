@@ -1121,113 +1121,211 @@ def _get_fallback_silver_df() -> pd.DataFrame:
     
     return df
 
-class MockResponse:
-    def __init__(self, json_data, status_code):
-        self._json_data = json_data
-        self.status_code = status_code
-        self.text = json.dumps(json_data) if json_data else ""
-        
-    def json(self):
-        return self._json_data
-        
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            raise Exception(f"HTTP Error: {self.status_code}")
+def _query_local_sqlite(query: str, params: tuple = ()) -> pd.DataFrame:
+    """Helper to query the local SQLite database file directly when backend is down."""
+    import sqlite3
+    db_path = "careerlens_local.db"
+    if not os.path.exists(db_path):
+        return pd.DataFrame()
+    try:
+        conn = sqlite3.connect(db_path)
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
 
 def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, params: dict | None = None):
-    """Simulates API responses locally using the fallback CSV and session state."""
+    """Simulates API responses locally using either SQLite database tables or the fallback CSV."""
     import re
     from datetime import datetime
     endpoint_clean = endpoint.split("?")[0]
+    db_exists = os.path.exists("careerlens_local.db")
     
+    # helper for parsing tags array
+    def parse_tags(t):
+        if not t or pd.isna(t):
+            return []
+        try:
+            if str(t).startswith("["):
+                import ast
+                return ast.literal_eval(str(t))
+            return [s.strip().lower() for s in str(t).split(",") if s.strip()]
+        except Exception:
+            return [s.strip().lower() for s in str(t).split(",") if s.strip()]
+
     if "/api/v1/stats" in endpoint_clean:
-        df = _get_fallback_silver_df()
-        return MockResponse({
-            "total_jobs": len(df),
-            "last_updated": "2026-07-02 18:45:00",
-            "earliest_job": "2025-12-12",
-            "latest_job": "2026-07-02",
-            "sources": ["kaggle"],
-            "total_dead_letters": 0
-        }, 200)
+        if db_exists:
+            df_jobs = _query_local_sqlite("SELECT COUNT(*) as count FROM silver_jobs")
+            total_jobs = int(df_jobs.iloc[0]["count"]) if not df_jobs.empty else 0
+            df_src = _query_local_sqlite("SELECT DISTINCT source FROM silver_jobs")
+            sources = df_src["source"].str.lower().tolist() if not df_src.empty else ["kaggle"]
+            return MockResponse({
+                "total_jobs": total_jobs,
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "earliest_job": "2025-12-12",
+                "latest_job": datetime.now().strftime("%Y-%m-%d"),
+                "sources": sources,
+                "total_dead_letters": 0
+            }, 200)
+        else:
+            df = _get_fallback_silver_df()
+            return MockResponse({
+                "total_jobs": len(df),
+                "last_updated": "2026-07-02 18:45:00",
+                "earliest_job": "2025-12-12",
+                "latest_job": "2026-07-02",
+                "sources": ["kaggle"],
+                "total_dead_letters": 0
+            }, 200)
         
     elif "/api/v1/trends/countries" in endpoint_clean:
-        df = _get_fallback_silver_df()
-        agg = df.groupby("country")["id"].count().reset_index()
-        agg.columns = ["country", "job_count"]
-        return MockResponse(agg.to_dict("records"), 200)
+        if db_exists:
+            df = _query_local_sqlite("SELECT country, job_count FROM gold_country_trends ORDER BY job_count DESC")
+            return MockResponse(df.to_dict("records"), 200)
+        else:
+            df = _get_fallback_silver_df()
+            agg = df.groupby("country")["id"].count().reset_index()
+            agg.columns = ["country", "job_count"]
+            return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/trends/skills" in endpoint_clean:
-        df = _get_fallback_silver_df()
-        exploded = df.explode("tags")
-        exploded = exploded[exploded["tags"].notna() & (exploded["tags"] != "")]
-        agg = exploded.groupby("tags")["id"].count().reset_index()
-        agg.columns = ["skill", "job_count"]
-        return MockResponse(agg.to_dict("records"), 200)
+        if db_exists:
+            df = _query_local_sqlite("SELECT skill, job_count FROM gold_skill_trends ORDER BY job_count DESC")
+            return MockResponse(df.to_dict("records"), 200)
+        else:
+            df = _get_fallback_silver_df()
+            exploded = df.explode("tags")
+            exploded = exploded[exploded["tags"].notna() & (exploded["tags"] != "")]
+            agg = exploded.groupby("tags")["id"].count().reset_index()
+            agg.columns = ["skill", "job_count"]
+            return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/trends/roles" in endpoint_clean:
-        df = _get_fallback_silver_df()
-        agg = df.groupby("role")["id"].count().reset_index()
-        agg.columns = ["role", "job_count"]
-        return MockResponse(agg.to_dict("records"), 200)
+        if db_exists:
+            df = _query_local_sqlite("SELECT role, job_count FROM gold_role_trends ORDER BY job_count DESC")
+            return MockResponse(df.to_dict("records"), 200)
+        else:
+            df = _get_fallback_silver_df()
+            agg = df.groupby("role")["id"].count().reset_index()
+            agg.columns = ["role", "job_count"]
+            return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/trends/time" in endpoint_clean:
-        df = _get_fallback_silver_df()
-        agg = df.groupby("published_month")["id"].count().reset_index()
-        agg.columns = ["published_month", "job_count"]
-        return MockResponse(agg.sort_values("published_month").to_dict("records"), 200)
+        if db_exists:
+            df = _query_local_sqlite("SELECT published_month, job_count FROM gold_time_trends ORDER BY published_month ASC")
+            return MockResponse(df.to_dict("records"), 200)
+        else:
+            df = _get_fallback_silver_df()
+            agg = df.groupby("published_month")["id"].count().reset_index()
+            agg.columns = ["published_month", "job_count"]
+            return MockResponse(agg.sort_values("published_month").to_dict("records"), 200)
         
     elif "/api/v1/salary/currencies" in endpoint_clean:
         return MockResponse(["USD", "EUR", "GBP"], 200)
         
     elif "/api/v1/salary/by-role" in endpoint_clean:
-        df = _get_fallback_silver_df()
-        valid_sal = df[df["salary_min"].notna() & df["salary_max"].notna()].copy()
-        if valid_sal.empty:
-            return MockResponse([], 200)
-        valid_sal["avg"] = (valid_sal["salary_min"] + valid_sal["salary_max"]) / 2
-        agg = valid_sal.groupby("role").agg(
-            avg_salary=("avg", "mean"),
-            min_salary=("salary_min", "min"),
-            max_salary=("salary_max", "max"),
-            job_count=("id", "count")
-        ).reset_index()
-        return MockResponse(agg.to_dict("records"), 200)
+        if db_exists:
+            df = _query_local_sqlite("""
+                SELECT 
+                    title as role,
+                    AVG((salary_min + salary_max)/2.0) as avg_salary,
+                    MIN(salary_min) as min_salary,
+                    MAX(salary_max) as max_salary,
+                    COUNT(*) as job_count
+                FROM silver_jobs
+                WHERE salary_min IS NOT NULL AND salary_max IS NOT NULL
+                GROUP BY title
+                ORDER BY avg_salary DESC
+            """)
+            return MockResponse(df.to_dict("records"), 200)
+        else:
+            df = _get_fallback_silver_df()
+            valid_sal = df[df["salary_min"].notna() & df["salary_max"].notna()].copy()
+            if valid_sal.empty:
+                return MockResponse([], 200)
+            valid_sal["avg"] = (valid_sal["salary_min"] + valid_sal["salary_max"]) / 2
+            agg = valid_sal.groupby("role").agg(
+                avg_salary=("avg", "mean"),
+                min_salary=("salary_min", "min"),
+                max_salary=("salary_max", "max"),
+                job_count=("id", "count")
+            ).reset_index()
+            return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/salary/by-country" in endpoint_clean:
-        df = _get_fallback_silver_df()
-        valid_sal = df[df["salary_min"].notna() & df["salary_max"].notna()].copy()
-        if valid_sal.empty:
-            return MockResponse([], 200)
-        valid_sal["avg"] = (valid_sal["salary_min"] + valid_sal["salary_max"]) / 2
-        agg = valid_sal.groupby("country").agg(
-            avg_salary=("avg", "mean"),
-            min_salary=("salary_min", "min"),
-            max_salary=("salary_max", "max"),
-            job_count=("id", "count")
-        ).reset_index()
-        return MockResponse(agg.to_dict("records"), 200)
+        if db_exists:
+            df = _query_local_sqlite("""
+                SELECT 
+                    country,
+                    AVG((salary_min + salary_max)/2.0) as avg_salary,
+                    MIN(salary_min) as min_salary,
+                    MAX(salary_max) as max_salary,
+                    COUNT(*) as job_count
+                FROM silver_jobs
+                WHERE salary_min IS NOT NULL AND salary_max IS NOT NULL
+                GROUP BY country
+                ORDER BY avg_salary DESC
+            """)
+            return MockResponse(df.to_dict("records"), 200)
+        else:
+            df = _get_fallback_silver_df()
+            valid_sal = df[df["salary_min"].notna() & df["salary_max"].notna()].copy()
+            if valid_sal.empty:
+                return MockResponse([], 200)
+            valid_sal["avg"] = (valid_sal["salary_min"] + valid_sal["salary_max"]) / 2
+            agg = valid_sal.groupby("country").agg(
+                avg_salary=("avg", "mean"),
+                min_salary=("salary_min", "min"),
+                max_salary=("salary_max", "max"),
+                job_count=("id", "count")
+            ).reset_index()
+            return MockResponse(agg.to_dict("records"), 200)
         
     elif "/api/v1/jobs" in endpoint_clean:
-        df = _get_fallback_silver_df()
-        if params:
-            if params.get("source") and params["source"] != "All":
-                df = df[df["source"] == params["source"].lower()]
-            if params.get("seniority") and params["seniority"] != "All":
-                df = df[df["seniority"] == params["seniority"]]
-            if params.get("min_salary") and float(params["min_salary"]) > 0:
-                df = df[(df["salary_min"] >= float(params["min_salary"])) | (df["salary_max"] >= float(params["min_salary"]))]
-        return MockResponse(df.to_dict("records"), 200)
+        if db_exists:
+            where_clauses = ["1=1"]
+            query_params = []
+            if params:
+                if params.get("source") and params["source"] != "All":
+                    where_clauses.append("source = ?")
+                    query_params.append(params["source"].lower())
+                if params.get("seniority") and params["seniority"] != "All":
+                    where_clauses.append("seniority = ?")
+                    query_params.append(params["seniority"])
+                if params.get("min_salary") and float(params["min_salary"]) > 0:
+                    where_clauses.append("(salary_min >= ? OR salary_max >= ?)")
+                    query_params.append(float(params["min_salary"]))
+                    query_params.append(float(params["min_salary"]))
+                    
+            sql = f"SELECT * FROM silver_jobs WHERE {' AND '.join(where_clauses)} LIMIT 100"
+            df = _query_local_sqlite(sql, tuple(query_params))
+            if "tags" in df.columns:
+                df["tags"] = df["tags"].apply(parse_tags)
+            return MockResponse(df.to_dict("records"), 200)
+        else:
+            df = _get_fallback_silver_df()
+            if params:
+                if params.get("source") and params["source"] != "All":
+                    df = df[df["source"] == params["source"].lower()]
+                if params.get("seniority") and params["seniority"] != "All":
+                    df = df[df["seniority"] == params["seniority"]]
+                if params.get("min_salary") and float(params["min_salary"]) > 0:
+                    df = df[(df["salary_min"] >= float(params["min_salary"])) | (df["salary_max"] >= float(params["min_salary"]))]
+            return MockResponse(df.to_dict("records"), 200)
         
     elif "/api/v1/bookmarks" in endpoint_clean:
         if method == "GET":
             return MockResponse(st.session_state.bookmarks, 200)
         elif method == "POST":
             job_id = json_data.get("job_id") if json_data else None
-            df = _get_fallback_silver_df()
-            job_row = df[df["id"] == job_id]
-            if not job_row.empty:
-                job_dict = job_row.iloc[0].to_dict()
+            if db_exists:
+                df = _query_local_sqlite("SELECT * FROM silver_jobs WHERE id = ?", (job_id,))
+            else:
+                df = _get_fallback_silver_df()
+                df = df[df["id"] == job_id]
+            if not df.empty:
+                job_dict = df.iloc[0].to_dict()
                 b_item = {
                     "id": len(st.session_state.bookmarks) + 1,
                     "job_id": job_id,
@@ -1279,27 +1377,31 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
         if not extracted:
             extracted = ["python", "sql"]
             
-        df = _get_fallback_silver_df()
+        if db_exists:
+            like_clauses = " OR ".join(["title LIKE ?" for _ in extracted] + ["description LIKE ?" for _ in extracted])
+            like_params = [f"%{e}%" for e in extracted] * 2
+            df = _query_local_sqlite(f"SELECT * FROM silver_jobs WHERE {like_clauses} LIMIT 50", tuple(like_params))
+            if df.empty:
+                df = _query_local_sqlite("SELECT * FROM silver_jobs LIMIT 10")
+        else:
+            df = _get_fallback_silver_df()
         
         def calc_score(row):
-            job_tags = set([t.lower() for t in (row.get("tags") or [])] + re.findall(r"\b[a-zA-Z0-9+#\-\.]+\b", row["title"].lower()))
-            matches = set(extracted).intersection(job_tags)
-            if not matches:
-                return 0
+            title_desc = (str(row["title"]) + " " + str(row.get("description", ""))).lower()
+            matches = [e for e in extracted if e in title_desc]
             return int((len(matches) / len(extracted)) * 100)
             
         df["match_score"] = df.apply(calc_score, axis=1)
-        recommended = df[df["match_score"] > 0].sort_values("match_score", ascending=False).head(10)
+        df = df[df["match_score"] > 0].sort_values("match_score", ascending=False).head(10)
         
-        rec_list = []
-        for _, r in recommended.iterrows():
-            rec_list.append(r.to_dict())
+        if "tags" in df.columns:
+            df["tags"] = df["tags"].apply(parse_tags)
             
         return MockResponse({
             "ai_summary": f"Based on your profile, you exhibit solid expertise in: {', '.join(extracted).upper()}. We recommend targeting remote jobs matching these keywords.",
             "extracted_skills": extracted,
             "recommended_roles": ["Developer", "Data Analyst"],
-            "recommendations": rec_list
+            "recommendations": df.to_dict("records")
         }, 200)
         
     return MockResponse({}, 404)
