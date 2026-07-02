@@ -1310,20 +1310,22 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
             query_params = []
             if params:
                 if params.get("source") and params["source"] != "All":
-                    where_clauses.append("source = ?")
+                    where_clauses.append("s.source = ?")
                     query_params.append(params["source"].lower())
                 if params.get("seniority") and params["seniority"] != "All":
-                    where_clauses.append("seniority = ?")
+                    where_clauses.append("s.seniority = ?")
                     query_params.append(params["seniority"])
                 if params.get("min_salary") and float(params["min_salary"]) > 0:
-                    where_clauses.append("(salary_min >= ? OR salary_max >= ?)")
+                    where_clauses.append("(s.salary_min >= ? OR s.salary_max >= ?)")
                     query_params.append(float(params["min_salary"]))
                     query_params.append(float(params["min_salary"]))
                     
-            sql = f"""SELECT job_id AS id, source, title, company_name, category, role,
-                      country, tags, publication_date, published_month, salary_min, salary_max,
-                      salary_currency, seniority, '' AS url, '' AS description
-                      FROM silver_jobs WHERE {' AND '.join(where_clauses)} LIMIT 100"""
+            sql = f"""SELECT s.job_id AS id, s.source, s.title, s.company_name, s.category, s.role,
+                      s.country, s.tags, s.publication_date, s.published_month, s.salary_min, s.salary_max,
+                      s.salary_currency, s.seniority, coalesce(b.url, '') AS url
+                      FROM silver_jobs s
+                      LEFT JOIN bronze_jobs b ON s.job_id = b.id
+                      WHERE {' AND '.join(where_clauses)} LIMIT 100"""
             df = _query_local_sqlite(sql, tuple(query_params))
             if "tags" in df.columns:
                 df["tags"] = df["tags"].apply(parse_tags)
@@ -1349,7 +1351,11 @@ def _simulate_api(method: str, endpoint: str, json_data: dict | None = None, par
         elif method == "POST":
             job_id = json_data.get("job_id") if json_data else None
             if db_exists:
-                df = _query_local_sqlite("SELECT * FROM silver_jobs WHERE job_id = ?", (job_id,))
+                df = _query_local_sqlite("""SELECT s.job_id AS id, s.source, s.title, s.company_name,
+                                            coalesce(b.url, '') AS url
+                                            FROM silver_jobs s
+                                            LEFT JOIN bronze_jobs b ON s.job_id = b.id
+                                            WHERE s.job_id = ?""", (job_id,))
             else:
                 df = _get_fallback_silver_df()
                 df = df[df["job_id"] == job_id]
@@ -1452,8 +1458,9 @@ def _api_request(method: str, url: str, json_data: dict | None = None, params: d
         return _simulate_api(method, endpoint, json_data, params)
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _fetch(endpoint: str, params: dict | None = None, _fallback: bool = False) -> pd.DataFrame:
+def _fetch(endpoint: str, params_str: str = "{}", _fallback: bool = False) -> pd.DataFrame:
     """Fetch JSON data from the CareerLens API and return as a DataFrame."""
+    params = json.loads(params_str) if params_str else {}
     r = _api_request("GET", f"{BASE}{endpoint}", params=params, _fallback=_fallback)
     r.raise_for_status()
     data = r.json()
@@ -1497,7 +1504,8 @@ def _safe_fetch(endpoint: str, params: dict | None = None) -> pd.DataFrame:
         if "limit" not in params and "trends" in endpoint:
             params["limit"] = 500
         fallback = st.session_state.get("api_fallback", True)
-        return _fetch(endpoint, params, _fallback=fallback)
+        params_str = json.dumps(params, sort_keys=True)
+        return _fetch(endpoint, params_str, _fallback=fallback)
     except Exception as exc:
         st.warning(f"⚠️ Could not load data from {endpoint}: {exc}")
         return pd.DataFrame()
