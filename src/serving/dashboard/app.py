@@ -1311,6 +1311,15 @@ def _api_request(method: str, url: str, json_data: dict | None = None, params: d
     """Executes a network request to the API backend, falling back to local simulation on connection failure."""
     endpoint = url.replace(BASE, "")
     
+    # Auto-recovery: If in fallback mode but running locally, try to ping the API
+    if st.session_state.api_fallback and ("localhost" in BASE or "127.0.0.1" in BASE):
+        try:
+            _real_requests.get(f"{BASE}/api/v1/stats", timeout=1.0)
+            st.session_state.api_fallback = False
+            st.toast("🔌 Reconnected to local CareerLens API backend!", icon="✅")
+        except Exception:
+            pass
+            
     if st.session_state.api_fallback:
         return _simulate_api(method, endpoint, json_data, params)
         
