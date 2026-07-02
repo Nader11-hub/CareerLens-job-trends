@@ -1676,6 +1676,7 @@ with st.sidebar:
     top_n = st.slider("Top N results", min_value=5, max_value=50, value=15, step=5)
     seniority_filter = st.selectbox("Seniority Level", ["All", "Junior", "Mid-level", "Senior", "Lead"])
     min_salary_filter = st.number_input("Min Salary (USD)", min_value=0, value=0, step=10000)
+    st.caption("_Filters apply to Browse Jobs, Data Quality & Email Alerts pages._")
     st.divider()
 
     st.markdown("### 📑 Navigation")
@@ -2575,7 +2576,12 @@ elif page == "📧 Email Alerts":
         with col2:
             st.markdown("### 📧 Live Email Preview")
             st.caption("This mockup dynamically updates to show what your next digest email will look like:")
-            preview_jobs_df = _safe_fetch("/api/v1/jobs", {"page_size": 100})
+            _preview_params = {"page_size": 100}
+            if seniority_filter != "All":
+                _preview_params["seniority"] = seniority_filter
+            if min_salary_filter > 0:
+                _preview_params["min_salary"] = min_salary_filter
+            preview_jobs_df = _safe_fetch("/api/v1/jobs", _preview_params)
             preview_name = sub_name or "Subscriber"
             preview_html = get_mock_email_html(preview_name, selected_skills, preview_jobs_df)
             st.components.v1.html(preview_html, height=450, scrolling=True)
@@ -2746,8 +2752,13 @@ elif page == "🔍 Data Quality":
         "A live observability and auditing dashboard checking data completeness and schema integrity. Evaluates the 200 most recent ingested job postings."
     )
 
-    # Fetch fresh batch of 200 jobs
-    dq_df = _safe_fetch("/api/v1/jobs", {"page_size": 200})
+    # Fetch jobs with active sidebar filters
+    _dq_params = {"page_size": 200}
+    if seniority_filter != "All":
+        _dq_params["seniority"] = seniority_filter
+    if min_salary_filter > 0:
+        _dq_params["min_salary"] = min_salary_filter
+    dq_df = _safe_fetch("/api/v1/jobs", _dq_params)
 
     if dq_df.empty:
         st.warning("No job records found to analyze. Run the ingestion pipeline first!")
