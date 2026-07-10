@@ -3514,19 +3514,32 @@ elif page == "🛡️ Admin Panel":
             unsafe_allow_html=True,
         )
         if st.button("🚀 Trigger Email Alerts", use_container_width=True):
-            try:
-                resp = _admin_req.post(
-                    f"{BASE}/api/v1/subscriptions/trigger?force=true",
-                    headers=_auth_headers,
-                    timeout=20,
+            if st.session_state.api_fallback:
+                # Count local active subscriptions if any
+                subs = st.session_state.get("subscriptions", [])
+                count = len([s for s in subs if s.get("is_active", True)])
+                st.success(
+                    f"✅ Simulated email alert dispatch for {count} local subscriber(s). "
+                    "(Start the FastAPI backend server on port 8000 to trigger real emails.)"
                 )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    st.success(f"✅ {data.get('message', 'Alerts sent!')}")
-                else:
-                    st.error(f"Error: {resp.json().get('detail', resp.status_code)}")
-            except Exception as exc:
-                st.error(f"Error: {exc}")
+            else:
+                try:
+                    resp = _admin_req.post(
+                        f"{BASE}/api/v1/subscriptions/trigger?force=true",
+                        headers=_auth_headers,
+                        timeout=20,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        st.success(f"✅ {data.get('message', 'Alerts sent!')}")
+                    else:
+                        st.error(f"Error: {resp.json().get('detail', resp.status_code)}")
+                except Exception:
+                    st.session_state.api_fallback = True
+                    st.warning(
+                        "📴 API server connection lost. Simulated dispatch for local subscribers instead. "
+                        "Please start the FastAPI server."
+                    )
     with op_col2:
         st.markdown(
             """<div class="premium-card">
@@ -3538,14 +3551,36 @@ elif page == "🛡️ Admin Panel":
             unsafe_allow_html=True,
         )
         if st.button("🔍 Check API Health", use_container_width=True):
-            try:
-                resp = _admin_req.get(f"{BASE}/health", timeout=5)
-                if resp.status_code == 200:
-                    st.success("✅ API is healthy and responding!")
-                else:
-                    st.warning(f"API returned status {resp.status_code}")
-            except Exception as exc:
-                st.error(f"API unreachable: {exc}")
+            if st.session_state.api_fallback:
+                st.markdown(
+                    '<div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);'
+                    'border-radius:10px;padding:12px 16px;margin-top:4px;">'
+                    '<span style="font-size:0.8rem;font-weight:700;color:#FBBF24;">⚠️ API Server Offline</span><br>'
+                    '<span style="font-size:0.75rem;color:#94A3B8;">Running in offline fallback mode.<br>'
+                    'To start the server run:<br>'
+                    '<code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:4px;font-size:0.7rem;">'
+                    'uvicorn src.serving.api.main:app --reload --port 8000'
+                    '</code></span></div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                try:
+                    resp = _admin_req.get(f"{BASE}/health", timeout=5)
+                    if resp.status_code == 200:
+                        st.success("✅ API is healthy and responding!")
+                    else:
+                        st.warning(f"API returned status {resp.status_code}")
+                except Exception:
+                    st.session_state.api_fallback = True
+                    st.markdown(
+                        '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);'
+                        'border-radius:10px;padding:12px 16px;margin-top:4px;">'
+                        '<span style="font-size:0.8rem;font-weight:700;color:#F87171;">❌ API Unreachable</span><br>'
+                        '<span style="font-size:0.75rem;color:#94A3B8;">'
+                        'Connection to port 8000 failed. Dashboard switched to offline mode.<br>'
+                        'Start the API server and refresh to reconnect.</span></div>',
+                        unsafe_allow_html=True,
+                    )
 
 
 # ---------------------------------------------------------------------------
