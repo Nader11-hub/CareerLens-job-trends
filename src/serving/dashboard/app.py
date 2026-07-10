@@ -1049,6 +1049,11 @@ if "auth_error" not in st.session_state:
     st.session_state.auth_error = None
 if "auth_tab" not in st.session_state:
     st.session_state.auth_tab = "login"  # "login" | "register"
+if "local_users" not in st.session_state:
+    st.session_state.local_users = {
+        "admin": {"password": "admin123", "role": "admin", "email": "admin@careerlens.io", "is_active": True},
+        "user": {"password": "user123", "role": "user", "email": "user@careerlens.io", "is_active": True}
+    }
 
 _FALLBACK_CSV = "data/fallback/kaggle_fallback.csv"
 
@@ -1701,27 +1706,82 @@ def _call_auth(endpoint: str, payload: dict) -> dict | None:
 
 def _do_login(username: str, password: str) -> bool:
     """Attempt login. On success, persist token & role in session state."""
-    result = _call_auth("/auth/login", {"username": username, "password": password})
-    if result:
-        st.session_state.authenticated = True
-        st.session_state.token = result["access_token"]
-        st.session_state.username = result["username"]
-        st.session_state.role = result["role"]
-        st.session_state.auth_error = None
-        return True
+    # 1. Reset auth error
+    st.session_state.auth_error = None
+    
+    # 2. Try the live API server first if not explicitly forced fallback
+    if not st.session_state.api_fallback:
+        result = _call_auth("/auth/login", {"username": username, "password": password})
+        if result:
+            st.session_state.authenticated = True
+            st.session_state.token = result["access_token"]
+            st.session_state.username = result["username"]
+            st.session_state.role = result["role"]
+            st.session_state.auth_error = None
+            return True
+            
+    # 3. Fall back to local mock user state if API is unreachable or offline fallback is active
+    if st.session_state.api_fallback or (st.session_state.auth_error and "Could not reach API server" in st.session_state.auth_error):
+        local_user = st.session_state.local_users.get(username)
+        if local_user:
+            if not local_user.get("is_active", True):
+                st.session_state.auth_error = "Account is deactivated (offline mode)."
+                return False
+            if local_user["password"] == password:
+                st.session_state.authenticated = True
+                st.session_state.token = "mock-jwt-token-for-local-session"
+                st.session_state.username = username
+                st.session_state.role = local_user["role"]
+                st.session_state.auth_error = None
+                # Auto-enable fallback since API server is down
+                st.session_state.api_fallback = True
+                return True
+            else:
+                st.session_state.auth_error = "Invalid username or password (offline mode)."
+                return False
+        else:
+            st.session_state.auth_error = "User not found (offline mode)."
+            return False
+            
     return False
 
 
 def _do_register(username: str, email: str, password: str) -> bool:
     """Attempt registration. On success, auto-login."""
-    result = _call_auth("/auth/register", {"username": username, "email": email, "password": password})
-    if result:
+    st.session_state.auth_error = None
+    
+    # 1. Try real API
+    if not st.session_state.api_fallback:
+        result = _call_auth("/auth/register", {"username": username, "email": email, "password": password})
+        if result:
+            st.session_state.authenticated = True
+            st.session_state.token = result["access_token"]
+            st.session_state.username = result["username"]
+            st.session_state.role = result["role"]
+            st.session_state.auth_error = None
+            return True
+
+    # 2. Fall back to local mock user state if API is unreachable or offline
+    if st.session_state.api_fallback or (st.session_state.auth_error and "Could not reach API server" in st.session_state.auth_error):
+        if username in st.session_state.local_users:
+            st.session_state.auth_error = "Username already taken (offline mode)."
+            return False
+        # Save to local session registry
+        st.session_state.local_users[username] = {
+            "password": password,
+            "role": "user",
+            "email": email,
+            "is_active": True
+        }
+        # Auto-login
         st.session_state.authenticated = True
-        st.session_state.token = result["access_token"]
-        st.session_state.username = result["username"]
-        st.session_state.role = result["role"]
+        st.session_state.token = "mock-jwt-token-for-local-session"
+        st.session_state.username = username
+        st.session_state.role = "user"
         st.session_state.auth_error = None
+        st.session_state.api_fallback = True
         return True
+        
     return False
 
 
@@ -3255,6 +3315,18 @@ elif page == "🛡️ Admin Panel":
     _auth_headers = {"Authorization": f"Bearer {st.session_state.token}"}
 
     def _admin_get_users():
+        if st.session_state.api_fallback:
+            return [
+                {
+                    "id": i + 1,
+                    "username": uname,
+                    "email": uinfo["email"],
+                    "role": uinfo["role"],
+                    "is_active": uinfo.get("is_active", True),
+                    "created_at": "2026-07-10T00:00:00"
+                }
+                for i, (uname, uinfo) in enumerate(st.session_state.local_users.items())
+            ]
         try:
             r = _admin_req.get(f"{BASE}/admin/users", headers=_auth_headers, timeout=10)
             if r.status_code == 200:
@@ -3355,37 +3427,51 @@ elif page == "🛡️ Admin Panel":
                         new_role = "user" if urole == "admin" else "admin"
                         btn_label = f"⬆️ Make Admin" if urole == "user" else "⬇️ Make User"
                         if st.button(btn_label, key=f"role_{uid}", use_container_width=True):
-                            try:
-                                resp = _admin_req.put(
-                                    f"{BASE}/admin/users/{uid}/role",
-                                    json={"role": new_role},
-                                    headers=_auth_headers,
-                                    timeout=10,
-                                )
-                                if resp.status_code == 200:
-                                    st.success(f"Role updated to {new_role}!")
+                            if st.session_state.api_fallback:
+                                if uname in st.session_state.local_users:
+                                    st.session_state.local_users[uname]["role"] = new_role
+                                    st.success(f"Role updated to {new_role}! (offline)")
                                     st.rerun()
-                                else:
-                                    st.error(resp.json().get("detail", "Failed"))
-                            except Exception as exc:
-                                st.error(f"Error: {exc}")
+                            else:
+                                try:
+                                    resp = _admin_req.put(
+                                        f"{BASE}/admin/users/{uid}/role",
+                                        json={"role": new_role},
+                                        headers=_auth_headers,
+                                        timeout=10,
+                                    )
+                                    if resp.status_code == 200:
+                                        st.success(f"Role updated to {new_role}!")
+                                        st.rerun()
+                                    else:
+                                        st.error(resp.json().get("detail", "Failed"))
+                                except Exception as exc:
+                                    st.error(f"Error: {exc}")
                     with btn_col2:
                         toggle_label = "🔴 Deactivate" if uactive else "🟢 Activate"
                         if st.button(toggle_label, key=f"toggle_{uid}", use_container_width=True):
-                            try:
-                                resp = _admin_req.put(
-                                    f"{BASE}/admin/users/{uid}/toggle",
-                                    headers=_auth_headers,
-                                    timeout=10,
-                                )
-                                if resp.status_code == 200:
+                            if st.session_state.api_fallback:
+                                if uname in st.session_state.local_users:
+                                    st.session_state.local_users[uname]["is_active"] = not uactive
                                     status_str = "deactivated" if uactive else "activated"
-                                    st.success(f"User {uname} {status_str}.")
+                                    st.success(f"User {uname} {status_str}! (offline)")
                                     st.rerun()
-                                else:
-                                    st.error(resp.json().get("detail", "Failed"))
-                            except Exception as exc:
-                                st.error(f"Error: {exc}")
+                            else:
+                                try:
+                                    resp = _admin_req.put(
+                                        f"{BASE}/admin/users/{uid}/toggle",
+                                        headers=_auth_headers,
+                                        timeout=10,
+                                    )
+                                    if resp.status_code == 200:
+                                        status_str = "deactivated" if uactive else "activated"
+                                        st.success(f"User {uname} {status_str}.")
+                                        st.rerun()
+                                    else:
+                                        st.error(resp.json().get("detail", "Failed"))
+                                except Exception as exc:
+                                    st.error(f"Error: {exc}")
+
 
                 st.markdown(
                     "<div style='height:4px'></div>",
