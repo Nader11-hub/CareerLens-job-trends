@@ -2004,7 +2004,7 @@ with st.sidebar:
     _nav_options = [
         "📊 Overview",
         "🔍 Data Quality",
-        "🌍 Countries",
+        "🌍 Locations",
         "🛠️ Skills",
         "💼 Roles",
         "📈 Time Trends",
@@ -2244,7 +2244,7 @@ if page == "📊 Overview":
     # KPI row — icon badge variant
     c1, c2, c3, c4, c5 = st.columns(5)
     _kpi(c1, f"{stats.get('total_jobs', 0):,}", "Total Jobs", _ICON_JOBS, "rgba(79,70,229,0.08)", "#4F46E5")
-    _kpi(c2, f"{stats.get('total_countries', 0):,}", "Countries", _ICON_COUNTRIES, "rgba(16,185,129,0.08)", "#10B981")
+    _kpi(c2, f"{stats.get('total_countries', 0):,}", "Locations", _ICON_COUNTRIES, "rgba(16,185,129,0.08)", "#10B981")
     _kpi(c3, f"{stats.get('total_skills', 0):,}", "Skills", _ICON_SKILLS, "rgba(139,92,246,0.08)", "#8B5CF6")
     _kpi(c4, stats.get("earliest_job", "—") or "—", "Earliest Job", _ICON_EARLIEST, "rgba(245,158,11,0.08)", "#F59E0B")
     _kpi(c5, stats.get("latest_job", "—") or "—", "Latest Job", _ICON_LATEST, "rgba(236,72,153,0.08)", "#EC4899")
@@ -2254,7 +2254,7 @@ if page == "📊 Overview":
     # Quick charts: top countries + top skills side by side
     left, right = st.columns(2)
     with left:
-        st.markdown('<div class="section-header">Top Countries</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Top Locations</div>', unsafe_allow_html=True)
         if not countries_df.empty:
             top_c = countries_df.groupby("country")["job_count"].sum().nlargest(top_n).reset_index()
             top_c = top_c.sort_values("job_count", ascending=False)
@@ -2285,7 +2285,7 @@ if page == "📊 Overview":
             )
             st.plotly_chart(fig, theme=None, use_container_width=True)
         else:
-            _empty_chart("Countries")
+            _empty_chart("Locations")
 
     with right:
         st.markdown('<div class="section-header">Top Skills</div>', unsafe_allow_html=True)
@@ -2320,18 +2320,18 @@ if page == "📊 Overview":
         else:
             _empty_chart("Skills")
 
-# ---- Countries ---------------------------------------------------------------
-elif page == "🌍 Countries":
+# ---- Locations ---------------------------------------------------------------
+elif page == "🌍 Locations":
     _render_header(
-        "🌍 Countries",
+        "🌍 Locations",
         "Regional breakdown of remote job postings across the global market."
     )
 
-    # Lazily fetch only the data required for Countries page
+    # Lazily fetch only the data required for Locations page
     countries_df = _safe_fetch("/api/v1/trends/countries")
 
     if countries_df.empty:
-        _empty_chart("Countries")
+        _empty_chart("Locations")
     else:
         # Choropleth world map
         st.markdown(
@@ -2348,7 +2348,7 @@ elif page == "🌍 Countries":
             color_continuous_scale="Blues",
             template=_PLOTLY_THEME,
             labels={"job_count": "Total Jobs"},
-            title=f"Top {len(agg)} Remote Jobs by Country",
+            title=f"Top {len(agg)} Remote Jobs by Location",
         )
         _apply_layout(fig_map, geo=dict(bgcolor="rgba(0,0,0,0)", showframe=False))
         st.plotly_chart(fig_map, theme=None, use_container_width=True)
@@ -2357,7 +2357,7 @@ elif page == "🌍 Countries":
 
         # Monthly breakdown
         st.markdown(
-            '<div class="section-header">Monthly Trends — Top Countries</div>',
+            '<div class="section-header">Monthly Trends — Top Locations</div>',
             unsafe_allow_html=True,
         )
         top_countries = (
@@ -2372,14 +2372,14 @@ elif page == "🌍 Countries":
                 color="country",
                 barmode="stack",
                 template=_PLOTLY_THEME,
-                labels={"job_count": "Jobs", "published_month": "Month", "country": "Country"},
+                labels={"job_count": "Jobs", "published_month": "Month", "country": "Location"},
                 color_discrete_sequence=px.colors.qualitative.Bold,
             )
             _apply_layout(fig, xaxis=dict(showgrid=False), yaxis=dict(showgrid=True))
             st.plotly_chart(fig, theme=None, use_container_width=True)
 
-        # Country ranking table
-        st.markdown('<div class="section-header">Country Rankings</div>', unsafe_allow_html=True)
+        # Location ranking table
+        st.markdown('<div class="section-header">Location Rankings</div>', unsafe_allow_html=True)
         ranking = (
             countries_df.groupby("country")["job_count"]
             .sum()
@@ -2387,7 +2387,7 @@ elif page == "🌍 Countries":
             .reset_index()
         )
         ranking.index = ranking.index + 1
-        ranking.columns = ["Country", "Total Jobs"]
+        ranking.columns = ["Location", "Total Jobs"]
         st.dataframe(ranking.head(50), use_container_width=True)
 
 # ---- Skills ------------------------------------------------------------------
