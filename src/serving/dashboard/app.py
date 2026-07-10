@@ -2032,8 +2032,14 @@ with st.sidebar:
         help="Check this to connect to the local API server running on port 8000. Uncheck to run in offline Kaggle fallback mode."
     )
     if live_mode and st.session_state.api_fallback:
-        st.session_state.api_fallback = False
-        st.rerun()
+        # Only switch to live mode if API is actually reachable
+        import requests as _ping_req
+        try:
+            _ping_req.get(f"{BASE}/health", timeout=2)
+            st.session_state.api_fallback = False
+            st.rerun()
+        except Exception:
+            st.warning("⚠️ API server not reachable on port 8000. Staying in offline mode.", icon="🔌")
     elif not live_mode and not st.session_state.api_fallback:
         st.session_state.api_fallback = True
         st.rerun()
@@ -3315,26 +3321,36 @@ elif page == "🛡️ Admin Panel":
     _auth_headers = {"Authorization": f"Bearer {st.session_state.token}"}
 
     def _admin_get_users():
+        # If already in offline mode, serve from session-state user registry
         if st.session_state.api_fallback:
-            return [
-                {
-                    "id": i + 1,
-                    "username": uname,
-                    "email": uinfo["email"],
-                    "role": uinfo["role"],
-                    "is_active": uinfo.get("is_active", True),
-                    "created_at": "2026-07-10T00:00:00"
-                }
-                for i, (uname, uinfo) in enumerate(st.session_state.local_users.items())
-            ]
+            return _local_users_list()
+        # Try live API; on any network error silently switch to offline
         try:
-            r = _admin_req.get(f"{BASE}/admin/users", headers=_auth_headers, timeout=10)
+            r = _admin_req.get(f"{BASE}/admin/users", headers=_auth_headers, timeout=5)
             if r.status_code == 200:
                 return r.json()
             st.error(f"Could not fetch users: {r.json().get('detail', r.status_code)}")
-        except Exception as exc:
-            st.error(f"API error: {exc}")
+        except Exception:
+            # API unreachable — auto-enable fallback and serve local registry
+            st.session_state.api_fallback = True
+            st.info("📴 API server offline — showing users from this session only.", icon="ℹ️")
+            return _local_users_list()
         return []
+
+    def _local_users_list():
+        """Build a user-list dict from st.session_state.local_users."""
+        from datetime import datetime as _dt
+        return [
+            {
+                "id": i + 1,
+                "username": uname,
+                "email": uinfo.get("email", ""),
+                "role": uinfo.get("role", "user"),
+                "is_active": uinfo.get("is_active", True),
+                "created_at": _dt.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+            for i, (uname, uinfo) in enumerate(st.session_state.local_users.items())
+        ]
 
     users_list = _admin_get_users()
 
