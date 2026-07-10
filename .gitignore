@@ -49,3 +49,10 @@ data/fallback/*.csv
 exports/*.csv
 exports/*.xlsx
 exports/*.json
+
+# Presentation files (local use only)
+presentation.html
+tickets_presentation.html
+presentation_tickets.md
+*_presentation.html
+*_presentation.md
