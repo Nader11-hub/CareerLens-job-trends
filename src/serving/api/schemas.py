@@ -188,3 +188,48 @@ class AlertTriggerResponse(BaseModel):
 
     alerts_sent: int
     message: str
+
+
+# ---------------------------------------------------------------------------
+# Authentication & User Management schemas
+# ---------------------------------------------------------------------------
+
+class UserRegister(BaseModel):
+    """Schema for new user registration."""
+
+    username: str = Field(..., min_length=3, max_length=80, description="Unique username")
+    email: str = Field(..., min_length=5, max_length=255, description="Valid email address")
+    password: str = Field(..., min_length=6, max_length=128, description="Plain-text password (min 6 chars)")
+
+
+class UserLogin(BaseModel):
+    """Schema for user login."""
+
+    username: str = Field(..., description="Username")
+    password: str = Field(..., description="Plain-text password")
+
+
+class TokenResponse(BaseModel):
+    """JWT token response returned after successful login/register."""
+
+    access_token: str
+    token_type: str = "bearer"
+    role: str
+    username: str
+
+
+class UserResponse(BaseModel):
+    """Public representation of a registered user (no password)."""
+
+    id: int
+    username: str
+    email: str
+    role: str
+    is_active: bool
+    created_at: str
+
+
+class RoleUpdate(BaseModel):
+    """Admin-only: change a user's role."""
+
+    role: str = Field(..., description="New role: 'user' or 'admin'")

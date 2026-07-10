@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from src.serving.api.auth import get_current_user, require_admin
 from src.serving.api.dependencies import get_db
 from src.serving.api.schemas import (
     CountryTrendResponse,
@@ -28,6 +29,12 @@ from src.serving.api.schemas import (
     AIRecommendRequest,
     AIRecommendResponse,
     AlertTriggerResponse,
+    # Auth schemas
+    UserRegister,
+    UserLogin,
+    TokenResponse,
+    UserResponse,
+    RoleUpdate,
 )
 from src.serving.api.service import (
     fetch_country_trends,
@@ -474,4 +481,171 @@ def trigger_alerts(
     )
 
 
+# ---------------------------------------------------------------------------
+# Authentication Endpoints
+# ---------------------------------------------------------------------------
 
+@app.post(
+    "/auth/register",
+    response_model=TokenResponse,
+    status_code=201,
+    tags=["auth"],
+    summary="Register a new user account",
+)
+def register(payload: UserRegister, session: Session = Depends(get_db)) -> TokenResponse:
+    """Create a new user account and return a JWT access token."""
+    from src.ingestion.db import User
+    from src.serving.api.auth import hash_password, create_access_token
+
+    # Check username uniqueness
+    if session.query(User).filter(User.username == payload.username).first():
+        raise HTTPException(status_code=400, detail="Username already taken.")
+    # Check email uniqueness
+    if session.query(User).filter(User.email == payload.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered.")
+
+    user = User(
+        username=payload.username,
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        role="user",
+        is_active=True,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    token = create_access_token({"sub": str(user.id), "role": user.role, "username": user.username})
+    return TokenResponse(access_token=token, role=user.role, username=user.username)
+
+
+@app.post(
+    "/auth/login",
+    response_model=TokenResponse,
+    tags=["auth"],
+    summary="Login and receive a JWT access token",
+)
+def login(payload: UserLogin, session: Session = Depends(get_db)) -> TokenResponse:
+    """Authenticate username + password and return a JWT access token."""
+    from src.ingestion.db import User
+    from src.serving.api.auth import verify_password, create_access_token
+
+    user = session.query(User).filter(User.username == payload.username).first()
+    if not user or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is deactivated. Contact an administrator.")
+
+    token = create_access_token({"sub": str(user.id), "role": user.role, "username": user.username})
+    return TokenResponse(access_token=token, role=user.role, username=user.username)
+
+
+@app.get(
+    "/auth/me",
+    response_model=UserResponse,
+    tags=["auth"],
+    summary="Get current authenticated user profile",
+)
+def get_me(current_user=Depends(get_current_user)) -> UserResponse:
+    """Return the profile of the currently authenticated user."""
+    return UserResponse(
+        id=current_user.id,
+        username=current_user.username,
+        email=current_user.email,
+        role=current_user.role,
+        is_active=current_user.is_active,
+        created_at=current_user.created_at.isoformat(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin-Only Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/admin/users",
+    response_model=list[UserResponse],
+    tags=["admin"],
+    summary="[Admin] List all registered users",
+)
+def admin_list_users(
+    admin=Depends(require_admin),
+    session: Session = Depends(get_db),
+) -> list[UserResponse]:
+    """Return all registered user accounts. Requires admin role."""
+    from src.ingestion.db import User
+    users = session.query(User).order_by(User.created_at.asc()).all()
+    return [
+        UserResponse(
+            id=u.id,
+            username=u.username,
+            email=u.email,
+            role=u.role,
+            is_active=u.is_active,
+            created_at=u.created_at.isoformat(),
+        )
+        for u in users
+    ]
+
+
+@app.put(
+    "/admin/users/{user_id}/role",
+    response_model=UserResponse,
+    tags=["admin"],
+    summary="[Admin] Change a user's role",
+)
+def admin_update_role(
+    user_id: int,
+    payload: RoleUpdate,
+    admin=Depends(require_admin),
+    session: Session = Depends(get_db),
+) -> UserResponse:
+    """Update the role of a registered user. Requires admin role."""
+    from src.ingestion.db import User
+    if payload.role not in ("user", "admin"):
+        raise HTTPException(status_code=400, detail="Role must be 'user' or 'admin'.")
+    user = session.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found.")
+    user.role = payload.role
+    session.commit()
+    session.refresh(user)
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at.isoformat(),
+    )
+
+
+@app.put(
+    "/admin/users/{user_id}/toggle",
+    response_model=UserResponse,
+    tags=["admin"],
+    summary="[Admin] Activate or deactivate a user",
+)
+def admin_toggle_user(
+    user_id: int,
+    admin=Depends(require_admin),
+    session: Session = Depends(get_db),
+) -> UserResponse:
+    """Toggle the active status of a user account. Requires admin role."""
+    from src.ingestion.db import User
+    user = session.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found.")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Admins cannot deactivate themselves.")
+    user.is_active = not user.is_active
+    session.commit()
+    session.refresh(user)
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at.isoformat(),
+    )

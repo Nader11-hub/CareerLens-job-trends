@@ -1034,6 +1034,22 @@ if "bookmarks" not in st.session_state:
 if "subscriptions" not in st.session_state:
     st.session_state.subscriptions = []
 
+# ---------------------------------------------------------------------------
+# Authentication session state
+# ---------------------------------------------------------------------------
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "token" not in st.session_state:
+    st.session_state.token = None
+if "username" not in st.session_state:
+    st.session_state.username = None
+if "role" not in st.session_state:
+    st.session_state.role = None
+if "auth_error" not in st.session_state:
+    st.session_state.auth_error = None
+if "auth_tab" not in st.session_state:
+    st.session_state.auth_tab = "login"  # "login" | "register"
+
 _FALLBACK_CSV = "data/fallback/kaggle_fallback.csv"
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -1666,11 +1682,259 @@ def to_excel_data(df: pd.DataFrame) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Sidebar
+# Authentication helpers — call FastAPI /auth/* endpoints
+# ---------------------------------------------------------------------------
+def _call_auth(endpoint: str, payload: dict) -> dict | None:
+    """POST to an auth endpoint and return JSON on success, or set auth_error."""
+    import requests as _req
+    try:
+        r = _req.post(f"{BASE}{endpoint}", json=payload, timeout=10)
+        if r.status_code in (200, 201):
+            return r.json()
+        data = r.json() if r.text else {}
+        st.session_state.auth_error = data.get("detail", f"Error {r.status_code}")
+        return None
+    except Exception as exc:
+        st.session_state.auth_error = f"Could not reach API server: {exc}"
+        return None
+
+
+def _do_login(username: str, password: str) -> bool:
+    """Attempt login. On success, persist token & role in session state."""
+    result = _call_auth("/auth/login", {"username": username, "password": password})
+    if result:
+        st.session_state.authenticated = True
+        st.session_state.token = result["access_token"]
+        st.session_state.username = result["username"]
+        st.session_state.role = result["role"]
+        st.session_state.auth_error = None
+        return True
+    return False
+
+
+def _do_register(username: str, email: str, password: str) -> bool:
+    """Attempt registration. On success, auto-login."""
+    result = _call_auth("/auth/register", {"username": username, "email": email, "password": password})
+    if result:
+        st.session_state.authenticated = True
+        st.session_state.token = result["access_token"]
+        st.session_state.username = result["username"]
+        st.session_state.role = result["role"]
+        st.session_state.auth_error = None
+        return True
+    return False
+
+
+def _do_logout() -> None:
+    """Clear all authentication state."""
+    for key in ("authenticated", "token", "username", "role", "auth_error"):
+        st.session_state[key] = None
+    st.session_state.authenticated = False
+
+
+# ---------------------------------------------------------------------------
+# Login / Register Gate — shown when not authenticated
+# ---------------------------------------------------------------------------
+def _render_auth_page() -> None:
+    """Render the full-page login/register screen."""
+    st.markdown(
+        """
+        <style>
+        .auth-outer {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 80vh; padding: 40px 0;
+        }
+        .auth-card {
+            background: rgba(21, 18, 31, 0.85);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            border: 1px solid rgba(139, 92, 246, 0.25);
+            border-radius: 20px;
+            padding: 48px 40px;
+            max-width: 460px;
+            width: 100%;
+            box-shadow: 0 24px 64px rgba(5, 4, 12, 0.5), 0 4px 24px rgba(79, 70, 229, 0.15);
+        }
+        .auth-logo { text-align: center; margin-bottom: 32px; }
+        .auth-logo-icon {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            width: 64px; height: 64px; border-radius: 16px;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 2rem; box-shadow: 0 8px 24px rgba(79,70,229,0.35);
+            margin-bottom: 16px;
+        }
+        .auth-title {
+            font-size: 1.6rem; font-weight: 800;
+            background: linear-gradient(135deg, #FFFFFF 30%, #8B5CF6 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            letter-spacing: -0.03em;
+        }
+        .auth-subtitle { color: #94A3B8; font-size: 0.875rem; margin-top: 4px; }
+        .auth-tab-row {
+            display: flex; background: rgba(255,255,255,0.04);
+            border-radius: 10px; padding: 4px; margin-bottom: 28px;
+            border: 1px solid rgba(139,92,246,0.12);
+        }
+        .auth-tab {
+            flex: 1; padding: 8px; text-align: center; border-radius: 7px;
+            cursor: pointer; font-size: 0.875rem; font-weight: 600;
+            transition: all 0.2s; color: #94A3B8;
+        }
+        .auth-tab.active {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            color: white; box-shadow: 0 4px 12px rgba(79,70,229,0.3);
+        }
+        .auth-error {
+            background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239,68,68,0.25);
+            color: #F87171; border-radius: 8px; padding: 10px 14px;
+            font-size: 0.82rem; margin-bottom: 16px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Brand header
+    st.markdown(
+        """
+        <div class="auth-logo">
+            <div class="auth-logo-icon">🌐</div>
+            <div class="auth-title">CareerLens</div>
+            <div class="auth-subtitle">Global Job Market Intelligence</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Tab switcher
+    col_l, col_r = st.columns(2)
+    with col_l:
+        if st.button("🔑  Login", use_container_width=True,
+                     type="primary" if st.session_state.auth_tab == "login" else "secondary"):
+            st.session_state.auth_tab = "login"
+            st.session_state.auth_error = None
+            st.rerun()
+    with col_r:
+        if st.button("✨  Register", use_container_width=True,
+                     type="primary" if st.session_state.auth_tab == "register" else "secondary"):
+            st.session_state.auth_tab = "register"
+            st.session_state.auth_error = None
+            st.rerun()
+
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # Error message
+    if st.session_state.auth_error:
+        st.markdown(
+            f'<div class="auth-error">⚠️ {st.session_state.auth_error}</div>',
+            unsafe_allow_html=True,
+        )
+
+    # --- LOGIN FORM ---
+    if st.session_state.auth_tab == "login":
+        with st.form("login_form", clear_on_submit=False):
+            st.markdown("#### Welcome back")
+            username = st.text_input("Username", placeholder="Enter your username", key="login_username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password", key="login_password")
+            submitted = st.form_submit_button("Sign In →", use_container_width=True)
+            if submitted:
+                if not username or not password:
+                    st.session_state.auth_error = "Please fill in all fields."
+                    st.rerun()
+                elif _do_login(username.strip(), password):
+                    st.rerun()
+                else:
+                    st.rerun()
+
+        st.markdown(
+            "<div style='text-align:center;color:#64748B;font-size:0.8rem;margin-top:20px;'>"
+            "Don't have an account? Click <strong>Register</strong> above.</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<div style='text-align:center;margin-top:10px;'>"
+            "<span style='background:rgba(79,70,229,0.1);color:#818CF8;border:1px solid rgba(79,70,229,0.2);"
+            "border-radius:8px;padding:6px 14px;font-size:0.75rem;font-weight:600;'>"
+            "🛡️ Admin: <code>admin</code> / <code>admin123</code></span></div>",
+            unsafe_allow_html=True,
+        )
+
+    # --- REGISTER FORM ---
+    else:
+        with st.form("register_form", clear_on_submit=False):
+            st.markdown("#### Create your account")
+            username = st.text_input("Username", placeholder="Choose a username (min 3 chars)", key="reg_username")
+            email = st.text_input("Email", placeholder="your@email.com", key="reg_email")
+            password = st.text_input("Password", type="password", placeholder="Min 6 characters", key="reg_password")
+            submitted = st.form_submit_button("Create Account →", use_container_width=True)
+            if submitted:
+                if not username or not email or not password:
+                    st.session_state.auth_error = "Please fill in all fields."
+                    st.rerun()
+                elif len(password) < 6:
+                    st.session_state.auth_error = "Password must be at least 6 characters."
+                    st.rerun()
+                elif "@" not in email:
+                    st.session_state.auth_error = "Please enter a valid email address."
+                    st.rerun()
+                elif _do_register(username.strip(), email.strip(), password):
+                    st.rerun()
+                else:
+                    st.rerun()
+
+        st.markdown(
+            "<div style='text-align:center;color:#64748B;font-size:0.8rem;margin-top:20px;'>"
+            "Already have an account? Click <strong>Login</strong> above.</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        "<div style='text-align:center;color:#475569;font-size:0.7rem;margin-top:32px;'>"
+        "Powered by FastAPI + Streamlit · CareerLens © 2026</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auth gate — show login page if not authenticated
+# ---------------------------------------------------------------------------
+if not st.session_state.authenticated:
+    _render_auth_page()
+    st.stop()  # halt rendering of any further content
+
+
+# ---------------------------------------------------------------------------
+# Sidebar — shown only when authenticated
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.markdown('<div class="sidebar-logo-text">🌐 CareerLens</div>', unsafe_allow_html=True)
     st.markdown('<div style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500; margin-top: -6px; margin-bottom: 12px;">Global Job Market Intelligence</div>', unsafe_allow_html=True)
+
+    # User badge + logout
+    _role_color = "#4F46E5" if st.session_state.role == "admin" else "#0D9488"
+    _role_label = "🛡️ Admin" if st.session_state.role == "admin" else "👤 User"
+    st.markdown(
+        f"""
+        <div style="background:rgba(21,18,31,0.9);border:1px solid rgba(139,92,246,0.2);
+                    border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;
+                    align-items:center;gap:10px;justify-content:space-between;">
+            <div>
+                <div style="font-size:0.8rem;font-weight:700;color:#F8FAFC;">{st.session_state.username}</div>
+                <div style="font-size:0.7rem;font-weight:600;color:{_role_color};margin-top:2px;">{_role_label}</div>
+            </div>
+            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4F46E5,#7C3AED);
+                        display:flex;align-items:center;justify-content:center;font-size:1rem;">
+                {"🛡️" if st.session_state.role == "admin" else "👤"}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("🚪 Logout", use_container_width=True):
+        _do_logout()
+        st.rerun()
+
+    st.divider()
 
     st.markdown("### 🔧 Filters")
     top_n = st.slider("Top N results", min_value=5, max_value=50, value=15, step=5)
@@ -1680,24 +1944,29 @@ with st.sidebar:
     st.divider()
 
     st.markdown("### 📑 Navigation")
+    _nav_options = [
+        "📊 Overview",
+        "🔍 Data Quality",
+        "🌍 Countries",
+        "🛠️ Skills",
+        "💼 Roles",
+        "📈 Time Trends",
+        "💸 Salary Analysis",
+        "🧠 Resume Matcher",
+        "📧 Email Alerts",
+        "🗂️ Browse Jobs",
+        "🔖 Bookmarks",
+    ]
+    if st.session_state.role == "admin":
+        _nav_options.append("🛡️ Admin Panel")
+
     page = st.radio(
         "View",
-        options=[
-            "📊 Overview",
-            "🔍 Data Quality",
-            "🌍 Countries",
-            "🛠️ Skills",
-            "💼 Roles",
-            "📈 Time Trends",
-            "💸 Salary Analysis",
-            "🧠 Resume Matcher",
-            "📧 Email Alerts",
-            "🗂️ Browse Jobs",
-            "🔖 Bookmarks",
-        ],
+        options=_nav_options,
         label_visibility="collapsed",
     )
     st.divider()
+
 
     st.markdown("### 🔌 Connection Mode")
     live_mode = st.checkbox(
@@ -2961,6 +3230,219 @@ elif page == "🔖 Bookmarks":
                 st.markdown("<hr style='margin: 16px 0; border: none; height: 1px; background: linear-gradient(90deg, transparent, rgba(79,70,229,0.15), transparent);'>", unsafe_allow_html=True)
 
 
+# ---------------------------------------------------------------------------
+# 🛡️ Admin Panel
+# ---------------------------------------------------------------------------
+elif page == "🛡️ Admin Panel":
+    if st.session_state.role != "admin":
+        st.error("🚫 Access denied. This page requires administrator privileges.")
+        st.stop()
+
+    st.markdown(
+        """
+        <div class="page-header-area">
+            <div style="display:flex;align-items:center;gap:14px;">
+                <div class="header-icon-badge">🛡️</div>
+                <div>
+                    <div class="page-title">Admin Panel</div>
+                    <div class="page-subtitle">Manage user accounts, roles, and system operations.</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── Fetch users list from API ──
+    import requests as _admin_req
+    _auth_headers = {"Authorization": f"Bearer {st.session_state.token}"}
+
+    def _admin_get_users():
+        try:
+            r = _admin_req.get(f"{BASE}/admin/users", headers=_auth_headers, timeout=10)
+            if r.status_code == 200:
+                return r.json()
+            st.error(f"Could not fetch users: {r.json().get('detail', r.status_code)}")
+        except Exception as exc:
+            st.error(f"API error: {exc}")
+        return []
+
+    users_list = _admin_get_users()
+
+    # ── KPI row ──
+    col1, col2, col3 = st.columns(3)
+    total_users = len(users_list)
+    admin_count = sum(1 for u in users_list if u["role"] == "admin")
+    active_count = sum(1 for u in users_list if u["is_active"])
+
+    with col1:
+        st.markdown(
+            f"""<div class="kpi-card gradient-primary-theme">
+                <div class="kpi-header-row"><div class="kpi-icon-badge-wrap"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+                <span class="kpi-label">Total Users</span></div>
+                <div class="kpi-number">{total_users}</div></div>""",
+            unsafe_allow_html=True,
+        )
+    with col2:
+        st.markdown(
+            f"""<div class="kpi-card gradient-secondary-theme">
+                <div class="kpi-header-row"><div class="kpi-icon-badge-wrap"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+                <span class="kpi-label">Admins</span></div>
+                <div class="kpi-number">{admin_count}</div></div>""",
+            unsafe_allow_html=True,
+        )
+    with col3:
+        st.markdown(
+            f"""<div class="kpi-card gradient-primary-theme">
+                <div class="kpi-header-row"><div class="kpi-icon-badge-wrap"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <span class="kpi-label">Active Accounts</span></div>
+                <div class="kpi-number">{active_count}</div></div>""",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+
+    # ── User management table ──
+    st.markdown("### 👥 User Accounts")
+    if not users_list:
+        st.info("No users found.")
+    else:
+        for u in users_list:
+            uid = u["id"]
+            uname = u["username"]
+            uemail = u["email"]
+            urole = u["role"]
+            uactive = u["is_active"]
+            ucreated = u["created_at"][:10]
+            is_self = uname == st.session_state.username
+
+            role_badge_color = "#4F46E5" if urole == "admin" else "#0D9488"
+            active_badge = (
+                '<span style="background:rgba(16,185,129,0.12);color:#10B981;border:1px solid rgba(16,185,129,0.25);'
+                'border-radius:12px;padding:2px 10px;font-size:0.72rem;font-weight:700;">✓ Active</span>'
+                if uactive else
+                '<span style="background:rgba(239,68,68,0.1);color:#F87171;border:1px solid rgba(239,68,68,0.25);'
+                'border-radius:12px;padding:2px 10px;font-size:0.72rem;font-weight:700;">✗ Inactive</span>'
+            )
+
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div class="premium-card" style="margin-bottom:8px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                            <div>
+                                <span style="font-size:1rem;font-weight:800;color:#F8FAFC;">
+                                    {"🛡️" if urole == "admin" else "👤"} {uname}
+                                    {"<span style='font-size:0.7rem;color:#94A3B8;margin-left:6px;'>(you)</span>" if is_self else ""}
+                                </span>
+                                <span style="font-size:0.75rem;color:#94A3B8;margin-left:12px;">{uemail}</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="background:rgba({('79,70,229' if urole == 'admin' else '13,148,136')},0.12);
+                                    color:{role_badge_color};border:1px solid rgba({('79,70,229' if urole == 'admin' else '13,148,136')},0.3);
+                                    border-radius:12px;padding:2px 12px;font-size:0.72rem;font-weight:700;">
+                                    {urole.upper()}
+                                </span>
+                                {active_badge}
+                                <span style="font-size:0.72rem;color:#64748B;">Joined {ucreated}</span>
+                            </div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                if not is_self:
+                    btn_col1, btn_col2, _ = st.columns([2, 2, 6])
+                    with btn_col1:
+                        new_role = "user" if urole == "admin" else "admin"
+                        btn_label = f"⬆️ Make Admin" if urole == "user" else "⬇️ Make User"
+                        if st.button(btn_label, key=f"role_{uid}", use_container_width=True):
+                            try:
+                                resp = _admin_req.put(
+                                    f"{BASE}/admin/users/{uid}/role",
+                                    json={"role": new_role},
+                                    headers=_auth_headers,
+                                    timeout=10,
+                                )
+                                if resp.status_code == 200:
+                                    st.success(f"Role updated to {new_role}!")
+                                    st.rerun()
+                                else:
+                                    st.error(resp.json().get("detail", "Failed"))
+                            except Exception as exc:
+                                st.error(f"Error: {exc}")
+                    with btn_col2:
+                        toggle_label = "🔴 Deactivate" if uactive else "🟢 Activate"
+                        if st.button(toggle_label, key=f"toggle_{uid}", use_container_width=True):
+                            try:
+                                resp = _admin_req.put(
+                                    f"{BASE}/admin/users/{uid}/toggle",
+                                    headers=_auth_headers,
+                                    timeout=10,
+                                )
+                                if resp.status_code == 200:
+                                    status_str = "deactivated" if uactive else "activated"
+                                    st.success(f"User {uname} {status_str}.")
+                                    st.rerun()
+                                else:
+                                    st.error(resp.json().get("detail", "Failed"))
+                            except Exception as exc:
+                                st.error(f"Error: {exc}")
+
+                st.markdown(
+                    "<div style='height:4px'></div>",
+                    unsafe_allow_html=True,
+                )
+
+    st.divider()
+
+    # ── System Operations ──
+    st.markdown("### ⚙️ System Operations")
+    op_col1, op_col2 = st.columns(2)
+    with op_col1:
+        st.markdown(
+            """<div class="premium-card">
+                <div style="font-size:0.8rem;font-weight:700;color:#F8FAFC;margin-bottom:6px;">📧 Email Alert Cycle</div>
+                <div style="font-size:0.78rem;color:#94A3B8;margin-bottom:12px;">
+                    Manually trigger the daily job-alert digest to all active subscribers.
+                </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        if st.button("🚀 Trigger Email Alerts", use_container_width=True):
+            try:
+                resp = _admin_req.post(
+                    f"{BASE}/api/v1/subscriptions/trigger?force=true",
+                    headers=_auth_headers,
+                    timeout=20,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    st.success(f"✅ {data.get('message', 'Alerts sent!')}")
+                else:
+                    st.error(f"Error: {resp.json().get('detail', resp.status_code)}")
+            except Exception as exc:
+                st.error(f"Error: {exc}")
+    with op_col2:
+        st.markdown(
+            """<div class="premium-card">
+                <div style="font-size:0.8rem;font-weight:700;color:#F8FAFC;margin-bottom:6px;">🔄 API Health Check</div>
+                <div style="font-size:0.78rem;color:#94A3B8;margin-bottom:12px;">
+                    Verify the FastAPI backend is reachable and responding correctly.
+                </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        if st.button("🔍 Check API Health", use_container_width=True):
+            try:
+                resp = _admin_req.get(f"{BASE}/health", timeout=5)
+                if resp.status_code == 200:
+                    st.success("✅ API is healthy and responding!")
+                else:
+                    st.warning(f"API returned status {resp.status_code}")
+            except Exception as exc:
+                st.error(f"API unreachable: {exc}")
 
 
 # ---------------------------------------------------------------------------

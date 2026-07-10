@@ -151,6 +151,22 @@ class BookmarkedJob(Base):
     )
 
 
+class User(Base):
+    """Registered users with role-based access control."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")  # "user" | "admin"
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
 _engines: dict[str, Engine] = {}
 _sessionmakers: dict[str, sessionmaker[Session]] = {}
 
@@ -208,12 +224,21 @@ def get_session(*args: Any, db_url: str | None = None, engine: Engine | None = N
 
 
 def init_db(db_url: str | None = None, engine: Engine | None = None) -> None:
-    """Create all required tables."""
+    """Create all required tables and seed a default admin account."""
 
     bind = engine or get_engine(db_url)
     logger.info("Initializing database schemas...")
     Base.metadata.create_all(bind=bind)
     logger.info("Database schemas initialized.")
+
+    # Seed default admin user on first run
+    try:
+        from src.serving.api.auth import seed_default_admin  # local import avoids circular deps
+        session = get_session(engine=bind)
+        seed_default_admin(session)
+        session.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not seed default admin: %s", exc)
 
 
 def upsert_bronze_jobs(session: Session, jobs: Iterable[dict[str, Any]]) -> int:
