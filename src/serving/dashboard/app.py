@@ -3401,47 +3401,54 @@ elif page == "🛡️ Admin Panel":
             ucreated = u["created_at"][:10]
             is_self = uname == st.session_state.username
 
+            # ── Pre-compute all HTML fragments to avoid f-string quote corruption ──
+            user_icon = "🛡️" if urole == "admin" else "👤"
+            role_badge_rgb = "79,70,229" if urole == "admin" else "13,148,136"
             role_badge_color = "#4F46E5" if urole == "admin" else "#0D9488"
+            role_label = urole.upper()
+
+            you_badge = (
+                '<span style="font-size:0.7rem;color:#94A3B8;margin-left:6px;">(you)</span>'
+                if is_self else ""
+            )
             active_badge = (
-                '<span style="background:rgba(16,185,129,0.12);color:#10B981;border:1px solid rgba(16,185,129,0.25);'
-                'border-radius:12px;padding:2px 10px;font-size:0.72rem;font-weight:700;">✓ Active</span>'
+                '<span style="background:rgba(16,185,129,0.12);color:#10B981;'
+                'border:1px solid rgba(16,185,129,0.25);border-radius:12px;'
+                'padding:2px 10px;font-size:0.72rem;font-weight:700;">✓ Active</span>'
                 if uactive else
-                '<span style="background:rgba(239,68,68,0.1);color:#F87171;border:1px solid rgba(239,68,68,0.25);'
-                'border-radius:12px;padding:2px 10px;font-size:0.72rem;font-weight:700;">✗ Inactive</span>'
+                '<span style="background:rgba(239,68,68,0.1);color:#F87171;'
+                'border:1px solid rgba(239,68,68,0.25);border-radius:12px;'
+                'padding:2px 10px;font-size:0.72rem;font-weight:700;">✗ Inactive</span>'
+            )
+
+            card_html = (
+                '<div class="premium-card" style="margin-bottom:8px;">'
+                '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
+                '<div>'
+                '<span style="font-size:1rem;font-weight:800;color:#F8FAFC;">'
+                f'{user_icon} {uname} {you_badge}'
+                '</span>'
+                f'<span style="font-size:0.75rem;color:#94A3B8;margin-left:12px;">{uemail}</span>'
+                '</div>'
+                '<div style="display:flex;align-items:center;gap:8px;">'
+                f'<span style="background:rgba({role_badge_rgb},0.12);color:{role_badge_color};'
+                f'border:1px solid rgba({role_badge_rgb},0.3);border-radius:12px;'
+                f'padding:2px 12px;font-size:0.72rem;font-weight:700;">{role_label}</span>'
+                f'{active_badge}'
+                f'<span style="font-size:0.72rem;color:#64748B;">Joined {ucreated}</span>'
+                '</div>'
+                '</div>'
+                '</div>'
             )
 
             with st.container():
-                st.markdown(
-                    f"""
-                    <div class="premium-card" style="margin-bottom:8px;">
-                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-                            <div>
-                                <span style="font-size:1rem;font-weight:800;color:#F8FAFC;">
-                                    {"🛡️" if urole == "admin" else "👤"} {uname}
-                                    {"<span style='font-size:0.7rem;color:#94A3B8;margin-left:6px;'>(you)</span>" if is_self else ""}
-                                </span>
-                                <span style="font-size:0.75rem;color:#94A3B8;margin-left:12px;">{uemail}</span>
-                            </div>
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <span style="background:rgba({('79,70,229' if urole == 'admin' else '13,148,136')},0.12);
-                                    color:{role_badge_color};border:1px solid rgba({('79,70,229' if urole == 'admin' else '13,148,136')},0.3);
-                                    border-radius:12px;padding:2px 12px;font-size:0.72rem;font-weight:700;">
-                                    {urole.upper()}
-                                </span>
-                                {active_badge}
-                                <span style="font-size:0.72rem;color:#64748B;">Joined {ucreated}</span>
-                            </div>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                st.markdown(card_html, unsafe_allow_html=True)
 
                 if not is_self:
                     btn_col1, btn_col2, _ = st.columns([2, 2, 6])
                     with btn_col1:
                         new_role = "user" if urole == "admin" else "admin"
-                        btn_label = f"⬆️ Make Admin" if urole == "user" else "⬇️ Make User"
+                        btn_label = "⬆️ Make Admin" if urole == "user" else "⬇️ Make User"
                         if st.button(btn_label, key=f"role_{uid}", use_container_width=True):
                             if st.session_state.api_fallback:
                                 if uname in st.session_state.local_users:
@@ -3488,11 +3495,8 @@ elif page == "🛡️ Admin Panel":
                                 except Exception as exc:
                                     st.error(f"Error: {exc}")
 
+                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-                st.markdown(
-                    "<div style='height:4px'></div>",
-                    unsafe_allow_html=True,
-                )
 
     st.divider()
 
