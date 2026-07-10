@@ -1736,7 +1736,7 @@ def _do_logout() -> None:
 # Login / Register Gate — shown when not authenticated
 # ---------------------------------------------------------------------------
 def _render_auth_page() -> None:
-    """Render the full-page login/register screen."""
+    """Render the full-page login/register screen centered."""
     st.markdown(
         """
         <style>
@@ -1794,105 +1794,102 @@ def _render_auth_page() -> None:
         unsafe_allow_html=True,
     )
 
-    # Brand header
-    st.markdown(
-        """
-        <div class="auth-logo">
-            <div class="auth-logo-icon">🌐</div>
-            <div class="auth-title">CareerLens</div>
-            <div class="auth-subtitle">Global Job Market Intelligence</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Tab switcher
-    col_l, col_r = st.columns(2)
-    with col_l:
-        if st.button("🔑  Login", use_container_width=True,
-                     type="primary" if st.session_state.auth_tab == "login" else "secondary"):
-            st.session_state.auth_tab = "login"
-            st.session_state.auth_error = None
-            st.rerun()
-    with col_r:
-        if st.button("✨  Register", use_container_width=True,
-                     type="primary" if st.session_state.auth_tab == "register" else "secondary"):
-            st.session_state.auth_tab = "register"
-            st.session_state.auth_error = None
-            st.rerun()
-
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-
-    # Error message
-    if st.session_state.auth_error:
+    # Use centered column layout to fit nicely on widescreen
+    col_l, col_mid, col_r = st.columns([1, 1.2, 1])
+    
+    with col_mid:
+        # Brand header
         st.markdown(
-            f'<div class="auth-error">⚠️ {st.session_state.auth_error}</div>',
+            """
+            <div class="auth-logo">
+                <div class="auth-logo-icon">🌐</div>
+                <div class="auth-title">CareerLens</div>
+                <div class="auth-subtitle">Global Job Market Intelligence</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
-    # --- LOGIN FORM ---
-    if st.session_state.auth_tab == "login":
-        with st.form("login_form", clear_on_submit=False):
-            st.markdown("#### Welcome back")
-            username = st.text_input("Username", placeholder="Enter your username", key="login_username")
-            password = st.text_input("Password", type="password", placeholder="Enter your password", key="login_password")
-            submitted = st.form_submit_button("Sign In →", use_container_width=True)
-            if submitted:
-                if not username or not password:
-                    st.session_state.auth_error = "Please fill in all fields."
-                    st.rerun()
-                elif _do_login(username.strip(), password):
-                    st.rerun()
-                else:
-                    st.rerun()
+        # Tab switcher
+        sub_col_l, sub_col_r = st.columns(2)
+        with sub_col_l:
+            if st.button("🔑  Login", use_container_width=True,
+                         type="primary" if st.session_state.auth_tab == "login" else "secondary"):
+                st.session_state.auth_tab = "login"
+                st.session_state.auth_error = None
+                st.rerun()
+        with sub_col_r:
+            if st.button("✨  Register", use_container_width=True,
+                         type="primary" if st.session_state.auth_tab == "register" else "secondary"):
+                st.session_state.auth_tab = "register"
+                st.session_state.auth_error = None
+                st.rerun()
+
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+        # Error message
+        if st.session_state.auth_error:
+            st.markdown(
+                f'<div class="auth-error">⚠️ {st.session_state.auth_error}</div>',
+                unsafe_allow_html=True,
+            )
+
+        # --- LOGIN FORM ---
+        if st.session_state.auth_tab == "login":
+            with st.form("login_form", clear_on_submit=False):
+                st.markdown("#### Welcome back")
+                username = st.text_input("Username", placeholder="Enter your username", key="login_username")
+                password = st.text_input("Password", type="password", placeholder="Enter your password", key="login_password")
+                submitted = st.form_submit_button("Sign In →", use_container_width=True)
+                if submitted:
+                    if not username or not password:
+                        st.session_state.auth_error = "Please fill in all fields."
+                        st.rerun()
+                    elif _do_login(username.strip(), password):
+                        st.rerun()
+                    else:
+                        st.rerun()
+
+            st.markdown(
+                "<div style='text-align:center;color:#64748B;font-size:0.8rem;margin-top:20px;'>"
+                "Don't have an account? Click <strong>Register</strong> above.</div>",
+                unsafe_allow_html=True,
+            )
+
+        # --- REGISTER FORM ---
+        else:
+            with st.form("register_form", clear_on_submit=False):
+                st.markdown("#### Create your account")
+                username = st.text_input("Username", placeholder="Choose a username (min 3 chars)", key="reg_username")
+                email = st.text_input("Email", placeholder="your@email.com", key="reg_email")
+                password = st.text_input("Password", type="password", placeholder="Min 6 characters", key="reg_password")
+                submitted = st.form_submit_button("Create Account →", use_container_width=True)
+                if submitted:
+                    if not username or not email or not password:
+                        st.session_state.auth_error = "Please fill in all fields."
+                        st.rerun()
+                    elif len(password) < 6:
+                        st.session_state.auth_error = "Password must be at least 6 characters."
+                        st.rerun()
+                    elif "@" not in email:
+                        st.session_state.auth_error = "Please enter a valid email address."
+                        st.rerun()
+                    elif _do_register(username.strip(), email.strip(), password):
+                        st.rerun()
+                    else:
+                        st.rerun()
+
+            st.markdown(
+                "<div style='text-align:center;color:#64748B;font-size:0.8rem;margin-top:20px;'>"
+                "Already have an account? Click <strong>Login</strong> above.</div>",
+                unsafe_allow_html=True,
+            )
 
         st.markdown(
-            "<div style='text-align:center;color:#64748B;font-size:0.8rem;margin-top:20px;'>"
-            "Don't have an account? Click <strong>Register</strong> above.</div>",
+            "<div style='text-align:center;color:#475569;font-size:0.7rem;margin-top:32px;'>"
+            "Powered by FastAPI + Streamlit · CareerLens © 2026</div>",
             unsafe_allow_html=True,
         )
-        st.markdown(
-            "<div style='text-align:center;margin-top:10px;'>"
-            "<span style='background:rgba(79,70,229,0.1);color:#818CF8;border:1px solid rgba(79,70,229,0.2);"
-            "border-radius:8px;padding:6px 14px;font-size:0.75rem;font-weight:600;'>"
-            "🛡️ Admin: <code>admin</code> / <code>admin123</code></span></div>",
-            unsafe_allow_html=True,
-        )
-
-    # --- REGISTER FORM ---
-    else:
-        with st.form("register_form", clear_on_submit=False):
-            st.markdown("#### Create your account")
-            username = st.text_input("Username", placeholder="Choose a username (min 3 chars)", key="reg_username")
-            email = st.text_input("Email", placeholder="your@email.com", key="reg_email")
-            password = st.text_input("Password", type="password", placeholder="Min 6 characters", key="reg_password")
-            submitted = st.form_submit_button("Create Account →", use_container_width=True)
-            if submitted:
-                if not username or not email or not password:
-                    st.session_state.auth_error = "Please fill in all fields."
-                    st.rerun()
-                elif len(password) < 6:
-                    st.session_state.auth_error = "Password must be at least 6 characters."
-                    st.rerun()
-                elif "@" not in email:
-                    st.session_state.auth_error = "Please enter a valid email address."
-                    st.rerun()
-                elif _do_register(username.strip(), email.strip(), password):
-                    st.rerun()
-                else:
-                    st.rerun()
-
-        st.markdown(
-            "<div style='text-align:center;color:#64748B;font-size:0.8rem;margin-top:20px;'>"
-            "Already have an account? Click <strong>Login</strong> above.</div>",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown(
-        "<div style='text-align:center;color:#475569;font-size:0.7rem;margin-top:32px;'>"
-        "Powered by FastAPI + Streamlit · CareerLens © 2026</div>",
-        unsafe_allow_html=True,
-    )
 
 
 # ---------------------------------------------------------------------------
